@@ -1,0 +1,60 @@
+================================================================================
+HOW TO INSTALL CHESSCRACK ON YOUR ANDROID DEVICE
+================================================================================
+
+ChessCrack is packaged as a standard Android application package (.apk).
+You do not need a computer, Android Studio, ADB, or developer mode to install it.
+
+Follow these simple steps:
+
+--------------------------------------------------------------------------------
+METHOD 1: DIRECT DOWNLOAD / SHARING VIA CHAT OR CLOUD (RECOMMENDED)
+--------------------------------------------------------------------------------
+
+1. Send the file `ChessCrack-v1.0.0.apk` (or `ChessCrack-release.apk`) to your phone
+   via WhatsApp, Telegram, Google Drive, Bluetooth, or email.
+
+2. On your Android phone, open your Downloads folder or tap the received file.
+
+3. If prompted with "For your security, your phone is not allowed to install
+   unknown apps from this source":
+   a. Tap "Settings" in the dialog.
+   b. Turn ON "Allow from this source" (or "Install unknown apps").
+   c. Tap Back to return to the installer.
+
+4. Tap "Install".
+
+5. When installation completes, tap "Open" or launch ChessCrack from your home screen.
+
+--------------------------------------------------------------------------------
+METHOD 2: USB TRANSFER FROM COMPUTER
+--------------------------------------------------------------------------------
+
+1. Connect your Android phone to your PC via a USB cable.
+2. On your phone, set the USB mode to "File Transfer" (MTP).
+3. On your PC, copy `release/ChessCrack-v1.0.0.apk` to your phone's "Download" folder.
+4. On your phone, open the "Files" or "My Files" app, navigate to "Downloads", and tap `ChessCrack-v1.0.0.apk`.
+5. Tap "Install" and grant permission if prompted.
+
+--------------------------------------------------------------------------------
+METHOD 3: INSTALL VIA ADB (FOR ADVANCED USERS)
+--------------------------------------------------------------------------------
+
+If your device is connected via USB with USB Debugging enabled:
+
+   adb install -r release/ChessCrack-v1.0.0.apk
+
+--------------------------------------------------------------------------------
+FIRST LAUNCH & ENGINE ACTIVATION
+--------------------------------------------------------------------------------
+
+1. Open ChessCrack.
+2. The default engine (Stockfish) initializes automatically with high-performance
+   native evaluation.
+3. To switch between Stockfish and Leela Chess Zero (Lc0):
+   - Tap the Engine dropdown in the header or analysis drawer.
+   - Select either "Stockfish" or "Lc0".
+4. To customize sound effects and appearance:
+   - Tap the Settings gear icon in the top header.
+   - Adjust Move Sounds (ON/OFF), volume slider, sound theme, and board style.
+================================================================================

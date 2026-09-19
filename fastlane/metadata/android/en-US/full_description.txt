@@ -1,0 +1,9 @@
+ChessCrack is a powerful, high-performance chess analysis and study application built with Flutter, inspired by Nibbler.
+
+Key Features:
+- Dual Engine Support: Built-in high-performance Stockfish and Leela Chess Zero (Lc0) neural network evaluation.
+- Deep Tactical & Positional Analysis: Live evaluation bar, principal variations (PV lines), node counts, and search depth statistics.
+- Interactive Move Tree: Explore branching game lines, variations, and annotations smoothly with an intuitive visual tree.
+- Customization: Multiple board styles and authentic Lichess piece sets (CBurnett, Merida, Staunty, Tatiana, Cardinal, California, and more).
+- Audio & Haptics: Integrated sound themes with configurable volume and feedback.
+- Completely Free & Open Source: No ads, no trackers, no proprietary network services.

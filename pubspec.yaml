@@ -1,0 +1,72 @@
+name: nibbler_chess
+description: A high-performance Nibbler-inspired Flutter chess analysis app with Stockfish and Lc0.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.10.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  audioplayers: ^6.0.0
+  file_picker: ^8.0.0
+  path_provider: ^2.1.2
+  shared_preferences: ^2.2.2
+  collection: ^1.18.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+dependency_overrides:
+  path_provider_android: 2.2.15
+
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/boards/
+    - assets/piece_sets/cburnett/
+    - assets/piece_sets/cburnett/2.0x/
+    - assets/piece_sets/cburnett/3.0x/
+    - assets/piece_sets/cburnett/4.0x/
+    - assets/piece_sets/merida/
+    - assets/piece_sets/merida/2.0x/
+    - assets/piece_sets/merida/3.0x/
+    - assets/piece_sets/merida/4.0x/
+    - assets/piece_sets/alpha/
+    - assets/piece_sets/alpha/2.0x/
+    - assets/piece_sets/alpha/3.0x/
+    - assets/piece_sets/alpha/4.0x/
+    - assets/piece_sets/staunty/
+    - assets/piece_sets/staunty/2.0x/
+    - assets/piece_sets/staunty/3.0x/
+    - assets/piece_sets/staunty/4.0x/
+    - assets/piece_sets/anarcandy/
+    - assets/piece_sets/anarcandy/2.0x/
+    - assets/piece_sets/anarcandy/3.0x/
+    - assets/piece_sets/anarcandy/4.0x/
+    - assets/piece_sets/california/
+    - assets/piece_sets/california/2.0x/
+    - assets/piece_sets/california/3.0x/
+    - assets/piece_sets/california/4.0x/
+    - assets/piece_sets/cardinal/
+    - assets/piece_sets/cardinal/2.0x/
+    - assets/piece_sets/cardinal/3.0x/
+    - assets/piece_sets/cardinal/4.0x/
+    - assets/piece_sets/tatiana/
+    - assets/piece_sets/tatiana/2.0x/
+    - assets/piece_sets/tatiana/3.0x/
+    - assets/piece_sets/tatiana/4.0x/
+    - assets/sounds/
+    - assets/sounds/standard/
+    - assets/sounds/futuristic/
+    - assets/sounds/lisp/
+    - assets/sounds/nes/
+    - assets/sounds/piano/
+    - assets/sounds/sfx/
+    - assets/weights/
+    - assets/icon/

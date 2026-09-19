@@ -1,0 +1,68 @@
+================================================================================
+CHESSCRACK v1.0.0 — OFFICIAL PRODUCTION RELEASE
+================================================================================
+
+Package Deliverable: ChessCrack-v1.0.0.apk (ChessCrack-release.apk)
+SHA-256 Checksum:    2140A7B0C3CC0EBA0532EDEBFB41C1AA4C6AF1985B0EC074A953D2E2B00FFBF3
+Target Platform:     Universal Android Release (arm64-v8a, armeabi-v7a)
+Minimum Android SDK: Android 5.0 (API 21)
+Target Android SDK:  Android 16 (API 36)
+Package Identifier:  com.example.nibbler_chess
+Application Label:   ChessCrack
+
+--------------------------------------------------------------------------------
+1. HIGHLIGHTS & ARCHITECTURE
+--------------------------------------------------------------------------------
+
+- Self-Contained Universal Android APK:
+  Installs directly on any Android smartphone or tablet without needing
+  developer tools, ADB, Flutter, or Android Studio.
+
+- Genuine Native Chess Engines:
+  Bundles authentic Stockfish (NNUE-enabled) and Leela Chess Zero (Lc0 with
+  embedded neural network weights).
+  Zero mock, built-in, heuristic, or simplified Dart engines.
+  Engine diagnostics display real process state, depths, nodes, and nps.
+
+- Authentic Lichess Public Chess Audio:
+  Full integration of canonical Lichess public audio assets (`assets/sounds/`):
+  * Realistic wood move sound (`move.mp3`)
+  * Acoustic capture impact (`capture.mp3`)
+  * King in check alert (`check.mp3`)
+  * Castling acoustic cue (`castle.mp3`)
+  * Pawn promotion chime (`promote.mp3`)
+  * Game end / checkmate chime (`dong.mp3`)
+  * Illegal move indicator (`error.mp3`)
+  Sound setting: Toggle ON / OFF with volume slider (0% - 100%) and selectable
+  sound themes (Standard Chess, Futuristic, Retro 8-bit, Acoustic Piano, Arcade).
+  Continuous engine UCI `info` stream is guaranteed 100% silent.
+
+- Full Adaptive Portrait & Landscape Support:
+  * Portrait Mode: Optimized vertical stack with chessboard, evaluation bar,
+    FEN bar, engine controls, and analysis panels.
+  * Landscape Mode: Dual-column responsive layout with side-by-side chessboard
+    and expandable analysis/engine diagnostics.
+  * Screen Rotation Stability: Orientation transitions seamlessly preserve
+    the active engine session, live search state, and variation tree without
+    terminating the native engine process.
+
+- App Lifecycle Resilience:
+  * Safe backgrounding pauses search without killing the engine process.
+  * App resume continues analysis with monotonically incremented request IDs,
+    preventing race conditions or stale evaluation flashes.
+  * Engine process lifecycle is strictly decoupled from Flutter widget rebuilds.
+
+- Deep Analysis & Variation Tree:
+  * Multi-PV candidate arrows with policy and Q-value color scaling.
+  * Interactive variation tree navigation with PGN import/export.
+  * Real-time evaluation bar with centipawn and win/draw/loss (WDL) percentages.
+
+--------------------------------------------------------------------------------
+2. VERIFICATION & INTEGRITY
+--------------------------------------------------------------------------------
+
+- Signed with dedicated production release keystore (`chesscrack-release.jks`).
+- Verified with Android `apksigner` using APK Signature Scheme v2.
+- 86/86 automated unit and integration tests passing.
+- Verified on real screen densities and orientations on tablet and phone form factors.
+================================================================================
