@@ -112,14 +112,17 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
 
   Future<void> _initEngineWithNativeCheck() async {
     final nativePath = await NativeEngineRunner.getEngineExecutablePath(_engineSettings.activeEngine);
-    await _engineService.initializeEngine(nativePath, settings: _engineSettings);
     if (nativePath == null) {
       if (mounted) {
         setState(() {
+          _isLiveAnalysisActive = false;
           _engineStatusMessage = '${_engineSettings.activeEngine.displayName} not installed. Tap Engine to download.';
         });
       }
-    } else if (mounted && _isLiveAnalysisActive) {
+      return;
+    }
+    await _engineService.initializeEngine(nativePath, settings: _engineSettings);
+    if (mounted && _isLiveAnalysisActive) {
       _startOrUpdateAnalysis();
     }
   }

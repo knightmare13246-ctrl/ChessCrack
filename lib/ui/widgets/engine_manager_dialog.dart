@@ -364,6 +364,8 @@ class _EngineManagerDialogState extends State<EngineManagerDialog> {
                   const Color(0xFF1B3B2B),
                   icon: Icons.check_circle_outline,
                 )
+              else if (info.status == DownloadStatus.unsupported)
+                _buildBadge('Architecture unsupported', Colors.amberAccent, const Color(0xFF332A00), icon: Icons.block)
               else if (!isDownloading)
                 _buildBadge('Not installed', Colors.white54, const Color(0xFF262626)),
             ],
@@ -407,8 +409,13 @@ class _EngineManagerDialogState extends State<EngineManagerDialog> {
           if (info.errorMessage != null && !isDownloading) ...[
             const SizedBox(height: 6),
             Text(
-              'Error: ${info.errorMessage}',
-              style: const TextStyle(color: Colors.redAccent, fontSize: 10.5),
+              info.status == DownloadStatus.unsupported
+                  ? info.errorMessage!
+                  : 'Error: ${info.errorMessage}',
+              style: TextStyle(
+                color: info.status == DownloadStatus.unsupported ? Colors.amberAccent : Colors.redAccent,
+                fontSize: 10.5,
+              ),
             ),
           ],
 
@@ -427,6 +434,17 @@ class _EngineManagerDialogState extends State<EngineManagerDialog> {
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Colors.orangeAccent),
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                )
+              else if (info.status == DownloadStatus.unsupported)
+                OutlinedButton.icon(
+                  onPressed: null,
+                  icon: const Icon(Icons.block, size: 14, color: Colors.white38),
+                  label: const Text('UNAVAILABLE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white38)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.white24),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                     visualDensity: VisualDensity.compact,
                   ),
                 )

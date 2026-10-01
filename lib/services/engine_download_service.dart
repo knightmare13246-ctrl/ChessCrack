@@ -68,8 +68,9 @@ class EngineDownloadService extends ChangeNotifier {
     final sfExePath = '${sfDir.path}/$sfExeName';
     final sfMetaPath = '${sfDir.path}/metadata.json';
 
-    final sfDownloadUrl = _resolveStockfishUrl(_deviceAbi);
-    final sfFilename = sfDownloadUrl.split('/').last;
+    final bool isAndroidX86 = Platform.isAndroid && (_deviceAbi == 'x86_64' || _deviceAbi == 'x86');
+    final sfDownloadUrl = isAndroidX86 ? '' : _resolveStockfishUrl(_deviceAbi);
+    final sfFilename = sfDownloadUrl.isNotEmpty ? sfDownloadUrl.split('/').last : 'stockfish';
 
     stockfishInfo = EngineArtifactInfo(
       id: 'stockfish_19',
@@ -81,9 +82,13 @@ class EngineDownloadService extends ChangeNotifier {
       localExecutablePath: sfExePath,
       metadataPath: sfMetaPath,
       abi: _deviceAbi,
+      status: isAndroidX86 ? DownloadStatus.unsupported : DownloadStatus.notInstalled,
+      errorMessage: isAndroidX86 ? 'Engine unavailable for this device architecture.' : null,
       expectedSizeBytes: 80 * 1024 * 1024,
     );
-    _checkInstalledStatus(stockfishInfo);
+    if (!isAndroidX86) {
+      _checkInstalledStatus(stockfishInfo);
+    }
 
     // 2. Leela Chess Zero v0.32.1
     final lc0Dir = Directory('${baseDir.path}/engines/lc0/0.32.1');
@@ -92,23 +97,29 @@ class EngineDownloadService extends ChangeNotifier {
     final lc0ExePath = '${lc0Dir.path}/$lc0ExeName';
     final lc0MetaPath = '${lc0Dir.path}/metadata.json';
 
-    final lc0DownloadUrl = Platform.isWindows
-        ? 'https://github.com/LeelaChessZero/lc0/releases/download/v0.32.1/lc0-v0.32.1-windows-cpu-dnnl.zip'
-        : 'https://github.com/LeelaChessZero/lc0/releases/download/v0.32.1/lc0-v0.32.1-android.apk';
+    final lc0DownloadUrl = isAndroidX86
+        ? ''
+        : (Platform.isWindows
+            ? 'https://github.com/LeelaChessZero/lc0/releases/download/v0.32.1/lc0-v0.32.1-windows-cpu-dnnl.zip'
+            : 'https://github.com/LeelaChessZero/lc0/releases/download/v0.32.1/lc0-v0.32.1-android.apk');
 
     lc0Info = EngineArtifactInfo(
       id: 'lc0_0.32.1',
       name: 'Leela Chess Zero',
       version: 'v0.32.1',
-      filename: lc0DownloadUrl.split('/').last,
+      filename: lc0DownloadUrl.isNotEmpty ? lc0DownloadUrl.split('/').last : 'lc0',
       officialSourceUrl: 'https://github.com/LeelaChessZero/lc0/releases/tag/v0.32.1',
       downloadUrl: lc0DownloadUrl,
       localExecutablePath: lc0ExePath,
       metadataPath: lc0MetaPath,
       abi: _deviceAbi,
+      status: isAndroidX86 ? DownloadStatus.unsupported : DownloadStatus.notInstalled,
+      errorMessage: isAndroidX86 ? 'Engine unavailable for this device architecture.' : null,
       expectedSizeBytes: 39 * 1024 * 1024,
     );
-    _checkInstalledStatus(lc0Info);
+    if (!isAndroidX86) {
+      _checkInstalledStatus(lc0Info);
+    }
 
     // 3. Official Maia Human Sparring Networks (10 models from official lczero.org)
     final networksDir = Directory('${baseDir.path}/networks/maia');
@@ -190,11 +201,10 @@ class EngineDownloadService extends ChangeNotifier {
     }
     if (abi == 'arm64-v8a') {
       return 'https://github.com/official-stockfish/Stockfish/releases/download/sf_19/stockfish-android-arm64-universal.tar.gz';
-    } else if (abi == 'x86_64') {
-      return 'https://github.com/official-stockfish/Stockfish/releases/download/sf_19/stockfish-linux-x86-64-universal.tar.gz';
-    } else {
-      // Default to armv7 neon for 32-bit ARM (e.g. armeabi-v7a)
+    } else if (abi == 'armeabi-v7a' || abi == 'armeabi') {
       return 'https://github.com/official-stockfish/Stockfish/releases/download/sf_19/stockfish-android-armv7-neon.tar.gz';
+    } else {
+      return '';
     }
   }
 
@@ -228,6 +238,11 @@ class EngineDownloadService extends ChangeNotifier {
 
   Future<bool> downloadStockfish({Function(double progress, String status)? onProgress}) async {
     if (stockfishInfo.isInstalled) return true;
+    if (stockfishInfo.status == DownloadStatus.unsupported || stockfishInfo.downloadUrl.isEmpty) {
+      stockfishInfo.errorMessage = 'Engine unavailable for this device architecture.';
+      notifyListeners();
+      return false;
+    }
     if (stockfishInfo.isDownloading && _activeCompleters.containsKey(stockfishInfo.id)) {
       return _activeCompleters[stockfishInfo.id]!.future;
     }
@@ -283,10 +298,15 @@ class EngineDownloadService extends ChangeNotifier {
       onProgress?.call(0.98, 'Verifying engine UCI response...');
       notifyListeners();
 
-      final verifyOk = await _verifyEngineStartup(targetExe.path, 'Stockfish 19');
-      if (!verifyOk) {
+      try {
+        final verifyOk = await _verifyEngineStartup(targetExe.path, 'Stockfish 19');
+        if (!verifyOk) {
+          if (targetExe.existsSync()) targetExe.deleteSync();
+          throw Exception('UCI handshake verification timed out or failed for Stockfish 19');
+        }
+      } catch (e) {
         if (targetExe.existsSync()) targetExe.deleteSync();
-        throw Exception('UCI handshake verification failed for Stockfish 19');
+        rethrow;
       }
 
       // Save metadata.json
@@ -324,6 +344,11 @@ class EngineDownloadService extends ChangeNotifier {
 
   Future<bool> downloadLc0({Function(double progress, String status)? onProgress}) async {
     if (lc0Info.isInstalled) return true;
+    if (lc0Info.status == DownloadStatus.unsupported || lc0Info.downloadUrl.isEmpty) {
+      lc0Info.errorMessage = 'Engine unavailable for this device architecture.';
+      notifyListeners();
+      return false;
+    }
     if (lc0Info.isDownloading && _activeCompleters.containsKey(lc0Info.id)) {
       return _activeCompleters[lc0Info.id]!.future;
     }
@@ -378,10 +403,15 @@ class EngineDownloadService extends ChangeNotifier {
       onProgress?.call(0.98, 'Verifying Lc0 UCI response...');
       notifyListeners();
 
-      final verifyOk = await _verifyEngineStartup(targetExe.path, 'Lc0');
-      if (!verifyOk) {
+      try {
+        final verifyOk = await _verifyEngineStartup(targetExe.path, 'Lc0');
+        if (!verifyOk) {
+          if (targetExe.existsSync()) targetExe.deleteSync();
+          throw Exception('UCI handshake verification timed out or failed for Lc0');
+        }
+      } catch (e) {
         if (targetExe.existsSync()) targetExe.deleteSync();
-        throw Exception('UCI handshake verification failed for Lc0');
+        rethrow;
       }
 
       // Save metadata
@@ -673,7 +703,7 @@ class EngineDownloadService extends ChangeNotifier {
       process.stdin.writeln('uci');
 
       final result = await completer.future.timeout(
-        const Duration(seconds: 6),
+        const Duration(seconds: 10),
         onTimeout: () => ok,
       );
 
@@ -685,6 +715,13 @@ class EngineDownloadService extends ChangeNotifier {
         process.kill();
       }
       return result;
+    } on ProcessException catch (pe) {
+      if (pe.errorCode == 13 || pe.message.toLowerCase().contains('permission denied')) {
+        throw Exception(
+          'Device OS policy (Android W^X) restricts executing downloaded binaries from app data storage.',
+        );
+      }
+      rethrow;
     } catch (_) {
       return false;
     }

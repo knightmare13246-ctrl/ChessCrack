@@ -9,6 +9,7 @@ enum DownloadStatus {
   installed,
   error,
   cancelled,
+  unsupported,
 }
 
 class EngineArtifactInfo {
