@@ -7,15 +7,18 @@ import '../../models/draft_variation.dart';
 import '../../models/engine_analysis.dart';
 import '../../models/engine_settings.dart';
 import '../../models/game_tree.dart';
+import '../../services/engine_download_service.dart';
 import '../../services/native_engine_runner.dart';
 import '../../services/pgn_parser.dart';
 import '../../services/session_persistence_service.dart';
 import '../../services/sound_service.dart';
 import '../../services/theme_service.dart';
 import '../../services/uci_engine_service.dart';
+import '../widgets/about_dialog.dart';
 import '../widgets/arrow_settings_dialog.dart';
 import '../widgets/engine_analysis_panel.dart';
 import '../widgets/engine_diagnostics_panel.dart';
+import '../widgets/engine_manager_dialog.dart';
 import '../widgets/engine_settings_dialog.dart';
 import '../widgets/move_tree_widget.dart';
 import '../widgets/nibbler_board.dart';
@@ -59,6 +62,11 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
+    _downloadService = EngineDownloadService();
+    _downloadService.addListener(() {
+      if (mounted) setState(() {});
+    });
+
     _gameTree = GameTree.initial();
     _themeService = ThemeService();
     _soundService = SoundService();
@@ -94,7 +102,10 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
     _initScreenSession();
   }
 
+  late final EngineDownloadService _downloadService;
+
   Future<void> _initScreenSession() async {
+    await _downloadService.initialize();
     await _restoreSessionState();
     await _initEngineWithNativeCheck();
   }
@@ -102,7 +113,13 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
   Future<void> _initEngineWithNativeCheck() async {
     final nativePath = await NativeEngineRunner.getEngineExecutablePath(_engineSettings.activeEngine);
     await _engineService.initializeEngine(nativePath, settings: _engineSettings);
-    if (mounted && _isLiveAnalysisActive) {
+    if (nativePath == null) {
+      if (mounted) {
+        setState(() {
+          _engineStatusMessage = '${_engineSettings.activeEngine.displayName} not installed. Tap Engine to download.';
+        });
+      }
+    } else if (mounted && _isLiveAnalysisActive) {
       _startOrUpdateAnalysis();
     }
   }
@@ -125,82 +142,96 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
         // Non-destructive transition; do not terminate engine
         break;
       case AppLifecycleState.detached:
-        // Host view detached. Do NOT blindly destroy the engine process.
-        // Save session state to disk for reliable recovery.
         _saveSessionState();
         break;
     }
   }
 
   void _saveSessionState() {
-    SessionPersistenceService.saveSession(
-      fen: _gameTree.currentNode.position.toFen(),
-      pgn: PgnParser.exportPgn(_gameTree),
-      activeEngine: _engineSettings.activeEngine,
-      isLiveAnalysisActive: _isLiveAnalysisActive,
-      multiPv: _engineSettings.multiPv,
-      threads: _engineSettings.threads,
-      hashSizeMb: _engineSettings.hashSizeMb,
-      arrowheadType: _engineSettings.arrowheadType,
-      arrowFilterLc0: _engineSettings.arrowFilterLc0,
-      arrowFilterOthers: _engineSettings.arrowFilterOthers,
-      isFlipped: _isFlipped,
-      selectedTab: _tabController.index,
-      draftVariation: _draftVariation,
+    SessionPersistenceService.saveAppState(
+      PersistedAppState(
+        schemaVersion: SessionPersistenceService.currentSchemaVersion,
+        boardThemeId: _themeService.activeBoard.id,
+        pieceSet: _themeService.activePieceSet,
+        showCoordinates: true,
+        isFlipped: _isFlipped,
+        pieceAnimationMs: _themeService.pieceAnimationMs,
+        soundEnabled: _soundService.isEnabled,
+        soundTheme: _soundService.activeTheme,
+        soundVolume: _soundService.volume,
+        hapticsEnabled: true,
+        activeEngine: _engineSettings.activeEngine,
+        isLiveAnalysisActive: _isLiveAnalysisActive,
+        multiPv: _engineSettings.multiPv,
+        arrowheadType: _engineSettings.arrowheadType,
+        arrowFilterLc0: _engineSettings.arrowFilterLc0,
+        arrowFilterOthers: _engineSettings.arrowFilterOthers,
+        infoboxStats: _engineSettings.infoboxStats,
+        stockfishThreads: _engineSettings.activeEngine == EngineType.stockfish ? _engineSettings.threads : 1,
+        stockfishHashMb: _engineSettings.activeEngine == EngineType.stockfish ? _engineSettings.hashSizeMb : 16,
+        selectedMaiaId: _engineSettings.selectedMaiaId,
+        selectedNetworkPath: _engineSettings.weightsPath,
+        lc0Backend: _engineSettings.lc0Backend,
+        lc0Threads: _engineSettings.activeEngine == EngineType.lc0 ? _engineSettings.threads : 1,
+        lc0HashMb: _engineSettings.activeEngine == EngineType.lc0 ? _engineSettings.hashSizeMb : 16,
+        fen: _gameTree.currentNode.position.toFen(),
+        pgn: PgnParser.exportPgn(_gameTree),
+        selectedTab: _tabController.index,
+        isDraftActive: _draftVariation != null,
+        draftStartFen: _draftVariation?.startFen,
+        draftPvMovesUci: _draftVariation?.pvLine.movesUci,
+        draftSelectedMoveIndex: _draftVariation?.selectedMoveIndex,
+      ),
     );
   }
 
   Future<void> _restoreSessionState() async {
-    final session = await SessionPersistenceService.loadSession();
-    if (session == null || !mounted) return;
+    final state = await SessionPersistenceService.loadAppState();
+    if (!mounted) return;
 
     setState(() {
-      if (session.pgn != null && session.pgn!.isNotEmpty) {
+      _themeService.activeBoard = _themeService.getBoardTheme(state.boardThemeId);
+      _themeService.activePieceSet = state.pieceSet;
+      _themeService.pieceAnimationMs = state.pieceAnimationMs;
+      _isFlipped = state.isFlipped;
+
+      _soundService.isEnabled = state.soundEnabled;
+      _soundService.activeTheme = state.soundTheme;
+      _soundService.setVolume(state.soundVolume);
+
+      _isLiveAnalysisActive = state.isLiveAnalysisActive;
+      _engineSettings = _engineSettings.copyWith(
+        activeEngine: state.activeEngine,
+        multiPv: state.multiPv,
+        arrowheadType: state.arrowheadType,
+        arrowFilterLc0: state.arrowFilterLc0,
+        arrowFilterOthers: state.arrowFilterOthers,
+        infoboxStats: state.infoboxStats,
+        threads: state.activeEngine == EngineType.stockfish ? state.stockfishThreads : state.lc0Threads,
+        hashSizeMb: state.activeEngine == EngineType.stockfish ? state.stockfishHashMb : state.lc0HashMb,
+        lc0Backend: state.lc0Backend,
+        selectedMaiaId: state.selectedMaiaId,
+        weightsPath: state.selectedNetworkPath,
+        nodeLimit: state.selectedMaiaId != null ? 1 : null,
+      );
+
+      if (state.pgn != null && state.pgn!.isNotEmpty) {
         try {
-          _gameTree = PgnParser.parse(session.pgn!);
+          _gameTree = PgnParser.parse(state.pgn!);
         } catch (_) {}
-      } else if (session.fen != null) {
+      } else if (state.fen.isNotEmpty) {
         try {
-          final pos = ChessPosition.fromFen(session.fen!);
+          final pos = ChessPosition.fromFen(state.fen);
           _gameTree = GameTree(root: GameNode(id: '0', position: pos, isOriginalMainline: true));
         } catch (_) {}
       }
 
-      if (session.activeEngine != null) {
-        _engineSettings = _engineSettings.copyWith(activeEngine: session.activeEngine);
+      if (state.selectedTab >= 0 && state.selectedTab < 3) {
+        _tabController.index = state.selectedTab;
       }
-      if (session.multiPv != null) {
-        _engineSettings = _engineSettings.copyWith(multiPv: session.multiPv);
-      }
-      if (session.threads != null) {
-        _engineSettings = _engineSettings.copyWith(threads: session.threads);
-      }
-      if (session.hashSizeMb != null) {
-        _engineSettings = _engineSettings.copyWith(hashSizeMb: session.hashSizeMb);
-      }
-      if (session.arrowheadType != null) {
-        _engineSettings = _engineSettings.copyWith(arrowheadType: session.arrowheadType);
-      }
-      if (session.arrowFilterLc0 != null) {
-        _engineSettings = _engineSettings.copyWith(arrowFilterLc0: session.arrowFilterLc0);
-      }
-      if (session.arrowFilterOthers != null) {
-        _engineSettings = _engineSettings.copyWith(arrowFilterOthers: session.arrowFilterOthers);
-      }
-      if (session.isFlipped != null) {
-        _isFlipped = session.isFlipped!;
-      }
-      if (session.isLiveAnalysisActive != null) {
-        _isLiveAnalysisActive = session.isLiveAnalysisActive!;
-      }
-
-      final draft = session.reconstructDraftVariation();
+      final draft = state.reconstructDraftVariation();
       if (draft != null) {
         _draftVariation = draft;
-      }
-
-      if (session.selectedTab != null && session.selectedTab! >= 0 && session.selectedTab! < 3) {
-        _tabController.index = session.selectedTab!;
       }
     });
   }
@@ -517,13 +548,38 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
     );
   }
 
+  void _openEngineManagerDialog() {
+    EngineManagerDialog.show(
+      context,
+      settings: _engineSettings,
+      onSettingsChanged: (newSettings) async {
+        final engineChanged = _engineSettings.activeEngine != newSettings.activeEngine;
+        final maiaChanged = _engineSettings.selectedMaiaId != newSettings.selectedMaiaId;
+        setState(() {
+          _engineSettings = newSettings;
+          if (engineChanged || maiaChanged) {
+            _currentAnalysis = null;
+            _gameTree.currentNode.cachedAnalysis = null;
+          }
+        });
+        final nativePath = await NativeEngineRunner.getEngineExecutablePath(newSettings.activeEngine);
+        await _engineService.updateSettings(_engineSettings, binaryPath: nativePath);
+        _saveSessionState();
+        if (_isLiveAnalysisActive) _startOrUpdateAnalysis();
+      },
+    );
+  }
+
   void _openThemeSettingsDialog() {
     showDialog(
       context: context,
       builder: (ctx) => ThemeSettingsDialog(
         themeService: _themeService,
         soundService: _soundService,
-        onThemeChanged: () => setState(() {}),
+        onThemeChanged: () {
+          setState(() {});
+          _saveSessionState();
+        },
       ),
     );
   }
@@ -540,6 +596,10 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
         _saveSessionState();
       },
     );
+  }
+
+  void _openAboutDialog() {
+    ChessCrackAboutDialog.show(context);
   }
 
   @override
@@ -828,6 +888,32 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
   }
 
   Widget _buildHeader(bool isNarrow) {
+    final bool isEngineInstalled = _downloadService.isEngineInstalled(_engineSettings.activeEngine);
+    final bool isMaiaRequired = _engineSettings.activeEngine == EngineType.lc0 &&
+        _engineSettings.isMaiaActive &&
+        _engineSettings.selectedMaiaId != null;
+    final bool isMaiaInstalled = !isMaiaRequired ||
+        (_downloadService.getMaiaModel(_engineSettings.selectedMaiaId!)?.isInstalled ?? false);
+    final bool isFullyReady = isEngineInstalled && isMaiaInstalled;
+
+    String enginePillText;
+    if (_engineSettings.activeEngine == EngineType.stockfish) {
+      enginePillText = 'Stockfish 19';
+    } else {
+      if (_engineSettings.isMaiaActive && _engineSettings.selectedMaiaId != null) {
+        enginePillText = 'Lc0 • ${_engineSettings.selectedMaiaId}';
+      } else {
+        enginePillText = 'Lc0 v0.32.1';
+      }
+    }
+    if (!isFullyReady) {
+      enginePillText += ' [Not Installed]';
+    }
+
+    final Color statusDotColor = !isFullyReady
+        ? Colors.redAccent
+        : (_isLiveAnalysisActive ? const Color(0xFF00D2BE) : Colors.amber);
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -851,53 +937,59 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
             'ChessCrack',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 16,
+              fontSize: 15,
               fontWeight: FontWeight.w900,
               letterSpacing: 0.5,
             ),
           ),
-          if (!isNarrow) ...[
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: _openEngineSettingsDialog,
+          const SizedBox(width: 8),
+          Flexible(
+            child: GestureDetector(
+              onTap: _openEngineManagerDialog,
               child: Tooltip(
-                message: '$_engineStatusMessage (Tap to configure)',
+                message: isFullyReady
+                    ? 'Engine: $enginePillText ($_engineStatusMessage) - Tap to manage'
+                    : 'Engine or Network not installed! Tap to download.',
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1F1F1F),
+                    color: isFullyReady ? const Color(0xFF1F1F1F) : const Color(0xFF331111),
                     borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: const Color(0xFF333333)),
+                    border: Border.all(
+                      color: isFullyReady ? const Color(0xFF333333) : const Color(0x99FF5252),
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        width: 6,
-                        height: 6,
+                        width: 7,
+                        height: 7,
                         decoration: BoxDecoration(
-                          color: _isLiveAnalysisActive ? const Color(0xFF00D2BE) : Colors.amber,
+                          color: statusDotColor,
                           shape: BoxShape.circle,
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _engineSettings.activeEngine.displayName,
-                        style: const TextStyle(
-                          color: Color(0xFFE0E0E0),
-                          fontSize: 11,
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.bold,
+                      const SizedBox(width: 5),
+                      Flexible(
+                        child: Text(
+                          enginePillText,
+                          style: TextStyle(
+                            color: isFullyReady ? const Color(0xFFE0E0E0) : Colors.redAccent.shade100,
+                            fontSize: 11,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
               ),
             ),
-          ],
-          const SizedBox(width: 8),
+          ),
+          const SizedBox(width: 6),
           // Explicit Engine ON / OFF Toggle
           GestureDetector(
             onTap: _toggleLiveAnalysis,
@@ -906,7 +998,7 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
                   ? 'Engine is active (Tap to turn OFF)'
                   : 'Engine is disabled (Tap to turn ON)',
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                 decoration: BoxDecoration(
                   color: _isLiveAnalysisActive ? const Color(0xFF003830) : const Color(0xFF222222),
                   borderRadius: BorderRadius.circular(12),
@@ -919,17 +1011,17 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      _isLiveAnalysisActive ? 'Engine: ON' : 'Engine: OFF',
+                      _isLiveAnalysisActive ? 'ON' : 'OFF',
                       style: TextStyle(
                         color: _isLiveAnalysisActive ? const Color(0xFF00D2BE) : Colors.white60,
-                        fontSize: 11,
+                        fontSize: 10,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(width: 5),
+                    const SizedBox(width: 4),
                     Container(
-                      width: 7,
-                      height: 7,
+                      width: 6,
+                      height: 6,
                       decoration: BoxDecoration(
                         color: _isLiveAnalysisActive ? const Color(0xFF00D2BE) : Colors.white38,
                         shape: BoxShape.circle,
@@ -940,7 +1032,6 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
               ),
             ),
           ),
-          const Spacer(),
           if (isNarrow) ...[
             IconButton(
               icon: const Icon(Icons.paste, color: Color(0xFF00D2BE), size: 19),
@@ -959,6 +1050,9 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
               color: const Color(0xFF222222),
               onSelected: (value) {
                 switch (value) {
+                  case 'engine_manager':
+                    _openEngineManagerDialog();
+                    break;
                   case 'arrows':
                     _openArrowSettingsDialog();
                     break;
@@ -971,9 +1065,22 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
                   case 'return':
                     _returnToOriginalGame();
                     break;
+                  case 'about':
+                    _openAboutDialog();
+                    break;
                 }
               },
               itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: 'engine_manager',
+                  child: Row(
+                    children: [
+                      Icon(Icons.download_for_offline, color: Color(0xFF00D2BE), size: 18),
+                      SizedBox(width: 8),
+                      Text('Engine & Maia Manager', style: TextStyle(color: Colors.white, fontSize: 13)),
+                    ],
+                  ),
+                ),
                 PopupMenuItem(
                   value: 'arrows',
                   child: Row(
@@ -1014,9 +1121,27 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
                     ],
                   ),
                 ),
+                PopupMenuDivider(height: 8),
+                PopupMenuItem(
+                  value: 'about',
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Color(0xFF00D2BE), size: 18),
+                      SizedBox(width: 8),
+                      Text('About & Licenses', style: TextStyle(color: Colors.white, fontSize: 13)),
+                    ],
+                  ),
+                ),
               ],
             ),
           ] else ...[
+            const Spacer(),
+            IconButton(
+              icon: const Icon(Icons.download_for_offline, color: Color(0xFF00D2BE), size: 19),
+              onPressed: _openEngineManagerDialog,
+              tooltip: 'Engine & Maia Manager',
+              visualDensity: VisualDensity.compact,
+            ),
             IconButton(
               icon: const Icon(Icons.paste, color: Color(0xFF00D2BE), size: 19),
               onPressed: _openPgnPasteDialog,
@@ -1045,6 +1170,12 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
               icon: const Icon(Icons.swap_vert, color: Colors.white70, size: 20),
               onPressed: _flipBoard,
               tooltip: 'Flip Board',
+              visualDensity: VisualDensity.compact,
+            ),
+            IconButton(
+              icon: const Icon(Icons.info_outline, color: Color(0xFF00D2BE), size: 19),
+              onPressed: _openAboutDialog,
+              tooltip: 'About & Licenses',
               visualDensity: VisualDensity.compact,
             ),
           ],

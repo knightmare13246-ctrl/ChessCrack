@@ -1,1 +1,1 @@
-High-performance chess analysis app with Stockfish and Lc0
+Offline UCI chess engine and neural network analysis workbench.

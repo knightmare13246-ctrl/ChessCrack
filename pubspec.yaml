@@ -1,5 +1,5 @@
 name: nibbler_chess
-description: A high-performance Nibbler-inspired Flutter chess analysis app with Stockfish and Lc0.
+description: An offline UCI chess engine & neural network analysis workbench with Stockfish and Leela Chess Zero support.
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -15,6 +15,7 @@ dependencies:
   path_provider: ^2.1.2
   shared_preferences: ^2.2.2
   collection: ^1.18.0
+  archive: ^4.3.0
 
 dev_dependencies:
   flutter_test:
@@ -68,5 +69,4 @@ flutter:
     - assets/sounds/nes/
     - assets/sounds/piano/
     - assets/sounds/sfx/
-    - assets/weights/
     - assets/icon/

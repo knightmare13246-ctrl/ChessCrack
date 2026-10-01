@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../models/engine_analysis.dart';
 import '../../models/engine_settings.dart';
+import '../../services/engine_download_service.dart';
 import '../../services/native_engine_runner.dart';
+import 'engine_manager_dialog.dart';
 
 class EngineSettingsDialog extends StatefulWidget {
   final EngineSettings settings;
@@ -25,8 +27,10 @@ class _EngineSettingsDialogState extends State<EngineSettingsDialog> {
   late int _multiPv;
   late String _lc0Backend;
   String? _weightsPath;
+  String? _selectedMaiaId;
   String? _syzygyPath;
 
+  final EngineDownloadService _downloadService = EngineDownloadService();
   final Map<EngineType, bool> _binaryAvailability = {};
 
   @override
@@ -40,11 +44,13 @@ class _EngineSettingsDialogState extends State<EngineSettingsDialog> {
         ? widget.settings.lc0Backend
         : 'auto';
     _weightsPath = widget.settings.weightsPath;
+    _selectedMaiaId = widget.settings.selectedMaiaId;
     _syzygyPath = widget.settings.syzygyPath;
     _checkBinaries();
   }
 
   Future<void> _checkBinaries() async {
+    await _downloadService.initialize();
     for (final e in EngineType.values) {
       final path = await NativeEngineRunner.getEngineExecutablePath(e);
       if (mounted) {
@@ -63,17 +69,26 @@ class _EngineSettingsDialogState extends State<EngineSettingsDialog> {
     if (result != null && result.files.single.path != null) {
       setState(() {
         _weightsPath = result.files.single.path;
+        _selectedMaiaId = null;
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final installedMaia = _downloadService.maiaModels.values.where((m) => m.isInstalled).toList();
+
     return AlertDialog(
       backgroundColor: const Color(0xFF1E1E1E),
-      title: const Text(
-        'ChessCrack Engine Settings',
-        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+      title: const Row(
+        children: [
+          Icon(Icons.tune, color: Color(0xFF00D2BE), size: 20),
+          SizedBox(width: 8),
+          Text(
+            'ChessCrack Engine Settings',
+            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+        ],
       ),
       content: SizedBox(
         width: double.maxFinite,
@@ -81,7 +96,30 @@ class _EngineSettingsDialogState extends State<EngineSettingsDialog> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('Selected Engine', style: TextStyle(color: Color(0xFF00D2BE), fontSize: 12, fontWeight: FontWeight.bold)),
+              // Top Action: Open Engine & Maia Manager
+              OutlinedButton.icon(
+                icon: const Icon(Icons.cloud_download_outlined, color: Color(0xFF00D2BE), size: 18),
+                label: const Text(
+                  'MANAGE ENGINES & MAIA NETWORKS',
+                  style: TextStyle(color: Color(0xFF00D2BE), fontWeight: FontWeight.bold, fontSize: 11.5),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Color(0xFF00D2BE), width: 1.2),
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                ),
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await EngineManagerDialog.show(
+                    context,
+                    settings: widget.settings,
+                    onSettingsChanged: widget.onSave,
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+
+              const Text('Active Chess Engine', style: TextStyle(color: Color(0xFF00D2BE), fontSize: 12, fontWeight: FontWeight.bold)),
               const SizedBox(height: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -96,16 +134,16 @@ class _EngineSettingsDialogState extends State<EngineSettingsDialog> {
                     dropdownColor: const Color(0xFF222222),
                     isExpanded: true,
                     items: EngineType.values.map((e) {
-                      final isAvailable = _binaryAvailability[e] ?? true;
+                      final isAvailable = _binaryAvailability[e] ?? false;
                       final label = isAvailable
                           ? '${e.displayName} (${e.description})'
-                          : '${e.displayName} — unavailable';
+                          : '${e.displayName} — [Not Installed]';
                       return DropdownMenuItem(
                         value: e,
                         child: Text(
                           label,
                           style: TextStyle(
-                            color: isAvailable ? Colors.white : Colors.white38,
+                            color: isAvailable ? Colors.white : Colors.amberAccent,
                             fontSize: 12,
                           ),
                         ),
@@ -120,12 +158,55 @@ class _EngineSettingsDialogState extends State<EngineSettingsDialog> {
               const SizedBox(height: 14),
 
               if (_activeEngine == EngineType.lc0) ...[
-                const Text('Lc0 Compute Backend', style: TextStyle(color: Color(0xFF00D2BE), fontSize: 12, fontWeight: FontWeight.bold)),
+                // Maia Human Sparring Selection
+                const Text('Human Sparring Network (Maia)', style: TextStyle(color: Color(0xFF00D2BE), fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                const Text(
-                  'Execution backend for neural network evaluations (BLAS measured optimal on this CPU runtime).',
-                  style: TextStyle(color: Colors.white54, fontSize: 10.5),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF141414),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String?>(
+                      value: _selectedMaiaId,
+                      dropdownColor: const Color(0xFF222222),
+                      isExpanded: true,
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Standard Lc0 (Custom or default weights)', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                        ),
+                        ...installedMaia.map((m) => DropdownMenuItem<String?>(
+                          value: m.id,
+                          child: Text('${m.name} (Elo ~${m.approximateElo}) — Nodes = 1', style: const TextStyle(color: Color(0xFF00D2BE), fontSize: 12)),
+                        )),
+                      ],
+                      onChanged: (val) {
+                        setState(() {
+                          _selectedMaiaId = val;
+                          if (val != null) {
+                            final model = _downloadService.maiaModels[val];
+                            if (model != null && model.isInstalled) {
+                              _weightsPath = model.localPath;
+                            }
+                          }
+                        });
+                      },
+                    ),
+                  ),
                 ),
+                if (_selectedMaiaId != null) ...[
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Per official Lc0 specification, Maia sparring networks run at Nodes = 1.',
+                    style: TextStyle(color: Color(0xFF80CBC4), fontSize: 10.5, fontStyle: FontStyle.italic),
+                  ),
+                ],
+                const SizedBox(height: 12),
+
+                const Text('Lc0 Compute Backend', style: TextStyle(color: Color(0xFF00D2BE), fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -152,6 +233,7 @@ class _EngineSettingsDialogState extends State<EngineSettingsDialog> {
                   ),
                 ),
                 const SizedBox(height: 12),
+
                 const Text('Lc0 Weights File (.pb.gz / .onnx)', style: TextStyle(color: Colors.white70, fontSize: 11)),
                 const SizedBox(height: 4),
                 Row(
@@ -165,7 +247,7 @@ class _EngineSettingsDialogState extends State<EngineSettingsDialog> {
                           border: Border.all(color: Colors.white12),
                         ),
                         child: Text(
-                          _weightsPath != null ? _weightsPath!.split(RegExp(r'[\\/]')).last : 'Default embedded / auto weights',
+                          _weightsPath != null ? _weightsPath!.split(RegExp(r'[\\/]')).last : 'None selected',
                           style: const TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'monospace'),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -189,7 +271,7 @@ class _EngineSettingsDialogState extends State<EngineSettingsDialog> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Multi-PV Lines (Arrows):', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  const Text('Multi-PV Lines (Candidate Arrows):', style: TextStyle(color: Colors.white70, fontSize: 12)),
                   Text('$_multiPv', style: const TextStyle(color: Color(0xFF00D2BE), fontWeight: FontWeight.bold)),
                 ],
               ),
@@ -213,8 +295,8 @@ class _EngineSettingsDialogState extends State<EngineSettingsDialog> {
               Slider(
                 value: _threads.toDouble(),
                 min: 1,
-                max: 16,
-                divisions: 15,
+                max: 8,
+                divisions: 7,
                 activeColor: const Color(0xFF00D2BE),
                 onChanged: (val) => setState(() => _threads = val.round()),
               ),
@@ -223,15 +305,15 @@ class _EngineSettingsDialogState extends State<EngineSettingsDialog> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Memory Hash:', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  const Text('Memory Hash / Cache:', style: TextStyle(color: Colors.white70, fontSize: 12)),
                   Text('$_hashSizeMb MB', style: const TextStyle(color: Color(0xFF00D2BE), fontWeight: FontWeight.bold)),
                 ],
               ),
               Slider(
                 value: _hashSizeMb.toDouble(),
                 min: 16,
-                max: 1024,
-                divisions: 15,
+                max: 512,
+                divisions: 31,
                 activeColor: const Color(0xFF00D2BE),
                 onChanged: (val) => setState(() => _hashSizeMb = val.round()),
               ),
@@ -257,7 +339,9 @@ class _EngineSettingsDialogState extends State<EngineSettingsDialog> {
               multiPv: _multiPv,
               lc0Backend: _lc0Backend,
               weightsPath: _weightsPath,
+              selectedMaiaId: _selectedMaiaId,
               syzygyPath: _syzygyPath,
+              nodeLimit: _selectedMaiaId != null ? 1 : widget.settings.nodeLimit,
             );
             widget.onSave(newSettings);
             Navigator.pop(context);

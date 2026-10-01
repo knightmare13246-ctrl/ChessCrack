@@ -7,6 +7,33 @@ class NativeEngineRunner {
   static const MethodChannel _channel =
       MethodChannel('org.chesscrack.app/native');
 
+  static Future<String> getDeviceAbi() async {
+    if (!Platform.isAndroid) return 'x86_64';
+    try {
+      final String? abi = await _channel.invokeMethod<String>('getDeviceAbi');
+      if (abi != null && abi.isNotEmpty) {
+        return abi;
+      }
+    } catch (_) {}
+    return 'armeabi-v7a';
+  }
+
+  static Future<bool> setExecutable(String filePath) async {
+    if (!Platform.isAndroid && !Platform.isLinux && !Platform.isMacOS) {
+      return true;
+    }
+    try {
+      if (Platform.isAndroid) {
+        final res = await _channel.invokeMethod<bool>('setExecutable', {'path': filePath});
+        if (res == true) return true;
+      }
+      final result = await Process.run('chmod', ['755', filePath]);
+      return result.exitCode == 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<String?> getNativeLibraryDir() async {
     if (!Platform.isAndroid) return null;
     try {
@@ -19,19 +46,31 @@ class NativeEngineRunner {
   }
 
   static Future<String?> getEngineExecutablePath(EngineType engineType) async {
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      if (engineType == EngineType.stockfish) {
+        final sfName = Platform.isWindows ? 'stockfish.exe' : 'stockfish';
+        final sfPath = '${appDir.path}/engines/stockfish/19/$sfName';
+        if (File(sfPath).existsSync() && File(sfPath).lengthSync() > 100000) {
+          await setExecutable(sfPath);
+          return sfPath;
+        }
+      } else if (engineType == EngineType.lc0) {
+        final lc0Name = Platform.isWindows ? 'lc0.exe' : 'lc0';
+        final lc0Path = '${appDir.path}/engines/lc0/0.32.1/$lc0Name';
+        if (File(lc0Path).existsSync() && File(lc0Path).lengthSync() > 100000) {
+          await setExecutable(lc0Path);
+          return lc0Path;
+        }
+      }
+    } catch (_) {}
+
+    // Fallbacks for desktop testing or legacy locations
     if (Platform.isWindows) {
       if (engineType == EngineType.stockfish) {
-        const winPath =
-            r'C:\Users\Quantum\Downloads\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe';
-        if (File(winPath).existsSync()) return winPath;
-
         const localWinPath = 'stockfish.exe';
         if (File(localWinPath).existsSync()) return localWinPath;
       } else if (engineType == EngineType.lc0) {
-        const winPath =
-            r'C:\Users\Quantum\Downloads\lc0-v0.32.1-windows-cpu-dnnl\lc0.exe';
-        if (File(winPath).existsSync()) return winPath;
-
         const localLc0 = 'lc0.exe';
         if (File(localLc0).existsSync()) return localLc0;
       }
@@ -41,7 +80,6 @@ class NativeEngineRunner {
       final rawName =
           engineType == EngineType.stockfish ? 'libstockfish' : 'liblc0';
 
-      // 1. Query official Android nativeLibraryDir via MethodChannel
       final nativeDir = await getNativeLibraryDir();
       if (nativeDir != null) {
         final path = '$nativeDir/$binaryName';
@@ -50,12 +88,9 @@ class NativeEngineRunner {
         if (File(rawPath).existsSync()) return rawPath;
       }
 
-      // 2. Standard Android native library locations for installed packages
       final commonPaths = [
         '/data/data/org.chesscrack.app/lib/$binaryName',
         '/data/user/0/org.chesscrack.app/lib/$binaryName',
-        '/data/data/com.chesscrack.chesscrack/lib/$binaryName',
-        '/data/user/0/com.chesscrack.chesscrack/lib/$binaryName',
         '/data/local/tmp/$rawName',
         '/data/local/tmp/$binaryName',
       ];
@@ -67,29 +102,4 @@ class NativeEngineRunner {
 
     return null;
   }
-
-  /// Automatically provisions bundled Lc0 weights so user never needs to download anything.
-  static Future<String?> getBundledWeightsPath() async {
-    try {
-      final dir = await getApplicationDocumentsDirectory();
-      final weightsDir = Directory('${dir.path}/weights');
-      if (!weightsDir.existsSync()) {
-        weightsDir.createSync(recursive: true);
-      }
-      final targetFile = File('${weightsDir.path}/default_weights.pb');
-      if (!targetFile.existsSync() || targetFile.lengthSync() == 0) {
-        final byteData = await rootBundle.load('assets/weights/default_weights.pb');
-        final buffer = byteData.buffer;
-        await targetFile.writeAsBytes(
-          buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
-          flush: true,
-        );
-      }
-      return targetFile.path;
-    } catch (_) {
-      // Fallback to built-in embedded weights if file extraction fails
-      return '<built in>';
-    }
-  }
 }
-

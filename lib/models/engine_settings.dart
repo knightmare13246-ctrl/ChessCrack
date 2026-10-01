@@ -12,11 +12,15 @@ class EngineSettings {
   double? smartPruningFactor;
   Map<String, String> customUciOptions;
 
+  String? selectedMaiaId;
+
   // Arrowhead and presentation settings
   ArrowheadType arrowheadType;
   ArrowFilterLc0 arrowFilterLc0;
   ArrowFilterOthers arrowFilterOthers;
   Set<String> infoboxStats;
+
+  bool get isMaiaActive => activeEngine == EngineType.lc0 && selectedMaiaId != null;
 
   EngineSettings({
     this.activeEngine = EngineType.stockfish,
@@ -29,6 +33,7 @@ class EngineSettings {
     this.nodeLimit,
     this.smartPruningFactor,
     Map<String, String>? customUciOptions,
+    this.selectedMaiaId,
     this.arrowheadType = ArrowheadType.winrate,
     this.arrowFilterLc0 = ArrowFilterLc0.all,
     this.arrowFilterOthers = ArrowFilterOthers.all,
@@ -47,17 +52,20 @@ class EngineSettings {
               'wdl',
             };
 
+  static const Object _sentinel = Object();
+
   EngineSettings copyWith({
     EngineType? activeEngine,
     int? threads,
     int? hashSizeMb,
     int? multiPv,
     String? lc0Backend,
-    String? weightsPath,
-    String? syzygyPath,
-    int? nodeLimit,
+    Object? weightsPath = _sentinel,
+    Object? syzygyPath = _sentinel,
+    Object? nodeLimit = _sentinel,
     double? smartPruningFactor,
     Map<String, String>? customUciOptions,
+    Object? selectedMaiaId = _sentinel,
     ArrowheadType? arrowheadType,
     ArrowFilterLc0? arrowFilterLc0,
     ArrowFilterOthers? arrowFilterOthers,
@@ -69,11 +77,12 @@ class EngineSettings {
       hashSizeMb: hashSizeMb ?? this.hashSizeMb,
       multiPv: multiPv ?? this.multiPv,
       lc0Backend: lc0Backend ?? this.lc0Backend,
-      weightsPath: weightsPath ?? this.weightsPath,
-      syzygyPath: syzygyPath ?? this.syzygyPath,
-      nodeLimit: nodeLimit ?? this.nodeLimit,
+      weightsPath: identical(weightsPath, _sentinel) ? this.weightsPath : (weightsPath as String?),
+      syzygyPath: identical(syzygyPath, _sentinel) ? this.syzygyPath : (syzygyPath as String?),
+      nodeLimit: identical(nodeLimit, _sentinel) ? this.nodeLimit : (nodeLimit as int?),
       smartPruningFactor: smartPruningFactor ?? this.smartPruningFactor,
       customUciOptions: customUciOptions ?? Map.from(this.customUciOptions),
+      selectedMaiaId: identical(selectedMaiaId, _sentinel) ? this.selectedMaiaId : (selectedMaiaId as String?),
       arrowheadType: arrowheadType ?? this.arrowheadType,
       arrowFilterLc0: arrowFilterLc0 ?? this.arrowFilterLc0,
       arrowFilterOthers: arrowFilterOthers ?? this.arrowFilterOthers,
@@ -92,6 +101,7 @@ class EngineSettings {
         'nodeLimit': nodeLimit,
         'smartPruningFactor': smartPruningFactor,
         'customUciOptions': customUciOptions,
+        'selectedMaiaId': selectedMaiaId,
         'arrowheadType': arrowheadType.name,
         'arrowFilterLc0': arrowFilterLc0.name,
         'arrowFilterOthers': arrowFilterOthers.name,
@@ -138,8 +148,8 @@ class EngineSettings {
 
     return EngineSettings(
       activeEngine: engine,
-      threads: json['threads'] as int? ?? 4,
-      hashSizeMb: json['hashSizeMb'] as int? ?? 256,
+      threads: json['threads'] as int? ?? 1,
+      hashSizeMb: json['hashSizeMb'] as int? ?? 16,
       multiPv: json['multiPv'] as int? ?? 3,
       lc0Backend: json['lc0Backend'] as String? ?? 'auto',
       weightsPath: json['weightsPath'] as String?,
@@ -149,6 +159,7 @@ class EngineSettings {
       customUciOptions: json['customUciOptions'] != null
           ? Map<String, String>.from(json['customUciOptions'] as Map)
           : {},
+      selectedMaiaId: json['selectedMaiaId'] as String?,
       arrowheadType: arrowType,
       arrowFilterLc0: filterLc0,
       arrowFilterOthers: filterOthers,

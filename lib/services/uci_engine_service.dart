@@ -141,9 +141,6 @@ class UciEngineService {
     try {
       final List<String> args = [];
       if (_settings.activeEngine == EngineType.lc0) {
-        if (_settings.weightsPath == null || _settings.weightsPath!.isEmpty) {
-          _settings.weightsPath = await NativeEngineRunner.getBundledWeightsPath();
-        }
         if (_settings.weightsPath != null &&
             _settings.weightsPath!.isNotEmpty &&
             _settings.weightsPath != '<built in>') {
@@ -382,8 +379,9 @@ class UciEngineService {
 
         _setLifecycle(EngineLifecycleState.analyzing, 'Analyzing with ${_settings.activeEngine.displayName} (Req #$reqId)');
         _sendCommand('position fen $fenToSearch');
-        if (_settings.nodeLimit != null) {
-          _sendCommand('go nodes ${_settings.nodeLimit}');
+        final effectiveNodeLimit = _settings.isMaiaActive ? 1 : _settings.nodeLimit;
+        if (effectiveNodeLimit != null) {
+          _sendCommand('go nodes $effectiveNodeLimit');
         } else {
           _sendCommand('go infinite');
         }
@@ -393,7 +391,7 @@ class UciEngineService {
           activeFen: fenToSearch,
           engineState: _searchState,
           activationState: _activationState,
-          rawUciLine: 'position fen $fenToSearch / go infinite',
+          rawUciLine: 'position fen $fenToSearch / go nodes $effectiveNodeLimit',
           action: 'LAUNCHED_PENDING_SEARCH',
         );
       } else {
@@ -403,11 +401,12 @@ class UciEngineService {
         _emitThrottledAnalysis(force: true);
       }
     } else if (_searchState == EngineSearchState.searching) {
-      if (_settings.nodeLimit != null) {
+      final effectiveNodeLimit = _settings.isMaiaActive ? 1 : _settings.nodeLimit;
+      if (effectiveNodeLimit != null) {
         // Natural stop because an explicit node limit was set and reached
         _searchState = EngineSearchState.ready;
         _isAnalyzing = false;
-        _setLifecycle(EngineLifecycleState.ready, 'Analysis complete (${_settings.nodeLimit} nodes reached)');
+        _setLifecycle(EngineLifecycleState.ready, 'Analysis complete ($effectiveNodeLimit nodes reached)');
         _emitThrottledAnalysis(force: true);
       } else if (_currentPosition.legalMoves.isEmpty || _lastBestmove == '(none)') {
         // Natural stop because position has no legal moves (checkmate/stalemate)
@@ -1149,8 +1148,9 @@ class UciEngineService {
     _setLifecycle(EngineLifecycleState.analyzing, 'Analyzing with ${_settings.activeEngine.displayName} (Req #$_analysisRequestId)');
     _sendCommand('position fen $_currentFen');
 
-    if (_settings.nodeLimit != null) {
-      _sendCommand('go nodes ${_settings.nodeLimit}');
+    final effectiveNodeLimit = _settings.isMaiaActive ? 1 : _settings.nodeLimit;
+    if (effectiveNodeLimit != null) {
+      _sendCommand('go nodes $effectiveNodeLimit');
     } else {
       _sendCommand('go infinite');
     }
@@ -1272,7 +1272,7 @@ class UciEngineService {
     final wasAnalyzing = _isAnalyzing;
     final engineChanged = _settings.activeEngine != newSettings.activeEngine;
     final backendChanged = _settings.activeEngine == EngineType.lc0 &&
-        (_settings.lc0Backend != newSettings.lc0Backend || _settings.weightsPath != newSettings.weightsPath);
+        _settings.lc0Backend != newSettings.lc0Backend;
     _settings = newSettings;
 
     if (engineChanged || backendChanged || !isProcessAlive) {

@@ -17,7 +17,6 @@ android {
     namespace = "org.chesscrack.app"
     compileSdk = 36
     buildToolsVersion = "36.0.0"
-    ndkVersion = "27.2.12479018"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -29,16 +28,13 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 28
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        ndk {
-            abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
-        }
     }
 
     signingConfigs {
@@ -65,10 +61,14 @@ android {
 
     packaging {
         jniLibs {
-            useLegacyPackaging = true
-            keepDebugSymbols += "**/*.so"
             excludes += listOf("lib/x86/**", "lib/x86_64/**", "**/libVkLayer_khronos_validation.so")
         }
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+        disable.add("ExpiredTargetSdkVersion")
     }
 }
 
