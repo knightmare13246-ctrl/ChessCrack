@@ -87,7 +87,7 @@ class EngineDownloadService extends ChangeNotifier {
       expectedSizeBytes: 80 * 1024 * 1024,
     );
     if (!isAndroidX86) {
-      _checkInstalledStatus(stockfishInfo);
+      await _checkInstalledStatus(stockfishInfo, EngineType.stockfish);
     }
 
     // 2. Leela Chess Zero v0.32.1
@@ -118,7 +118,7 @@ class EngineDownloadService extends ChangeNotifier {
       expectedSizeBytes: 39 * 1024 * 1024,
     );
     if (!isAndroidX86) {
-      _checkInstalledStatus(lc0Info);
+      await _checkInstalledStatus(lc0Info, EngineType.lc0);
     }
 
     // 3. Official Maia Human Sparring Networks (10 models from official lczero.org)
@@ -173,7 +173,16 @@ class EngineDownloadService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _checkInstalledStatus(EngineArtifactInfo info) {
+  Future<void> _checkInstalledStatus(EngineArtifactInfo info, EngineType type) async {
+    try {
+      final nativePath = await NativeEngineRunner.getEngineExecutablePath(type);
+      if (nativePath != null && File(nativePath).existsSync()) {
+        info.status = DownloadStatus.installed;
+        info.installedSizeBytes = File(nativePath).lengthSync();
+        info.localExecutablePath = nativePath;
+        return;
+      }
+    } catch (_) {}
     final file = File(info.localExecutablePath);
     if (file.existsSync() && file.lengthSync() > 100000) {
       info.status = DownloadStatus.installed;
@@ -206,6 +215,22 @@ class EngineDownloadService extends ChangeNotifier {
     } else {
       return '';
     }
+  }
+
+  Future<void> refreshStatuses() async {
+    if (!_initialized) {
+      await initialize();
+      return;
+    }
+    final bool isAndroidX86 = Platform.isAndroid && (_deviceAbi == 'x86_64' || _deviceAbi == 'x86');
+    if (!isAndroidX86) {
+      await _checkInstalledStatus(stockfishInfo, EngineType.stockfish);
+      await _checkInstalledStatus(lc0Info, EngineType.lc0);
+    }
+    for (final m in maiaModels.values) {
+      _checkMaiaInstalledStatus(m);
+    }
+    notifyListeners();
   }
 
   bool isEngineInstalled(EngineType type) {
@@ -549,8 +574,7 @@ class EngineDownloadService extends ChangeNotifier {
       final meta = File(stockfishInfo.metadataPath);
       if (meta.existsSync()) meta.deleteSync();
     } catch (_) {}
-    stockfishInfo.status = DownloadStatus.notInstalled;
-    stockfishInfo.installedSizeBytes = 0;
+    await _checkInstalledStatus(stockfishInfo, EngineType.stockfish);
     stockfishInfo.progress = 0.0;
     notifyListeners();
   }
@@ -563,8 +587,7 @@ class EngineDownloadService extends ChangeNotifier {
       final meta = File(lc0Info.metadataPath);
       if (meta.existsSync()) meta.deleteSync();
     } catch (_) {}
-    lc0Info.status = DownloadStatus.notInstalled;
-    lc0Info.installedSizeBytes = 0;
+    await _checkInstalledStatus(lc0Info, EngineType.lc0);
     lc0Info.progress = 0.0;
     notifyListeners();
   }

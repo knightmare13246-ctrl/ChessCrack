@@ -64,7 +64,7 @@ class EngineAnalysisPanel extends StatelessWidget {
 
     final headerText = analysis != null && lines.isNotEmpty
         ? analysis!.formattedHeader
-        : (isAnalyzing ? 'Analyzing position...' : 'Engine paused');
+        : (isAnalyzing ? 'Analyzing position...' : 'Tap Analyze to start engine evaluation');
 
     return Container(
       color: const Color(0xFF0F0F0F),

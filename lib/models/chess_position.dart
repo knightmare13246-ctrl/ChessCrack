@@ -268,6 +268,22 @@ class ChessPosition {
           ? '${m.from.algebraic}${m.to.algebraic}${m.promotion!.charLower}'
           : '${m.from.algebraic}${m.to.algebraic}';
       uciMap[key.toLowerCase()] = m;
+
+      if (m.isCastling) {
+        if (m.from == const Square(4, 0)) {
+          if (m.to == const Square(6, 0)) {
+            uciMap['e1h1'] = m; // Chess960 / FRC alias
+          } else if (m.to == const Square(2, 0)) {
+            uciMap['e1a1'] = m; // Chess960 / FRC alias
+          }
+        } else if (m.from == const Square(4, 7)) {
+          if (m.to == const Square(6, 7)) {
+            uciMap['e8h8'] = m; // Chess960 / FRC alias
+          } else if (m.to == const Square(2, 7)) {
+            uciMap['e8a8'] = m; // Chess960 / FRC alias
+          }
+        }
+      }
     }
     _cachedUciMap = uciMap;
 

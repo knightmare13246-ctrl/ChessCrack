@@ -163,6 +163,7 @@ class NibblerArrowPainter extends CustomPainter {
         endCenter: endCenter,
         arrowEndPoint: arrowEndPoint,
         angle: angle,
+        distance: distance,
         strokeWidth: strokeWidth,
         arrowHeadLength: arrowHeadLength,
         badgeRadius: badgeRadius,
@@ -271,9 +272,14 @@ class NibblerArrowPainter extends CustomPainter {
     }
 
     // Explicit 3-pass layer rendering:
-    // Rank 5 down to 1 so Rank 1 draws cleanly on top
+    // Nibbler layering: Longer arrows underneath shorter arrows.
+    // If lengths are close/tied, higher rank number (worse move) drawn first so Rank 1 draws cleanly on top.
     final drawOrder = List<_PreparedArrow>.from(prepared)
-      ..sort((a, b) => b.arrow.rank.compareTo(a.arrow.rank));
+      ..sort((a, b) {
+        final lenCmp = b.distance.compareTo(a.distance);
+        if (lenCmp != 0) return lenCmp;
+        return b.arrow.rank.compareTo(a.arrow.rank);
+      });
 
     // LAYER 1: Arrow Shafts
     for (final p in drawOrder) {
@@ -414,6 +420,7 @@ class _PreparedArrow {
   final Offset endCenter;
   final Offset arrowEndPoint;
   final double angle;
+  final double distance;
   final double strokeWidth;
   final double arrowHeadLength;
   final double badgeRadius;
@@ -427,6 +434,7 @@ class _PreparedArrow {
     required this.endCenter,
     required this.arrowEndPoint,
     required this.angle,
+    required this.distance,
     required this.strokeWidth,
     required this.arrowHeadLength,
     required this.badgeRadius,

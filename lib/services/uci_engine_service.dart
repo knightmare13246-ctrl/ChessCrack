@@ -112,6 +112,12 @@ class UciEngineService {
 
   UciEngineService(this._settings);
 
+  int? get _effectiveNodeLimit {
+    if (_settings.isMaiaActive) return 1;
+    if (_settings.activeEngine == EngineType.stockfish) return null;
+    return _settings.nodeLimit;
+  }
+
   Completer<void>? _initCompleter;
 
   Future<void> initializeEngine(String? binaryPath, {bool forceRestart = false, EngineSettings? settings}) async {
@@ -379,7 +385,7 @@ class UciEngineService {
 
         _setLifecycle(EngineLifecycleState.analyzing, 'Analyzing with ${_settings.activeEngine.displayName} (Req #$reqId)');
         _sendCommand('position fen $fenToSearch');
-        final effectiveNodeLimit = _settings.isMaiaActive ? 1 : _settings.nodeLimit;
+        final effectiveNodeLimit = _effectiveNodeLimit;
         if (effectiveNodeLimit != null) {
           _sendCommand('go nodes $effectiveNodeLimit');
         } else {
@@ -401,7 +407,7 @@ class UciEngineService {
         _emitThrottledAnalysis(force: true);
       }
     } else if (_searchState == EngineSearchState.searching) {
-      final effectiveNodeLimit = _settings.isMaiaActive ? 1 : _settings.nodeLimit;
+      final effectiveNodeLimit = _effectiveNodeLimit;
       if (effectiveNodeLimit != null) {
         // Natural stop because an explicit node limit was set and reached
         _searchState = EngineSearchState.ready;
@@ -1148,7 +1154,7 @@ class UciEngineService {
     _setLifecycle(EngineLifecycleState.analyzing, 'Analyzing with ${_settings.activeEngine.displayName} (Req #$_analysisRequestId)');
     _sendCommand('position fen $_currentFen');
 
-    final effectiveNodeLimit = _settings.isMaiaActive ? 1 : _settings.nodeLimit;
+    final effectiveNodeLimit = _effectiveNodeLimit;
     if (effectiveNodeLimit != null) {
       _sendCommand('go nodes $effectiveNodeLimit');
     } else {

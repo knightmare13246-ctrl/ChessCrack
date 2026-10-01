@@ -61,6 +61,7 @@ android {
 
     packaging {
         jniLibs {
+            useLegacyPackaging = true
             excludes += listOf("lib/x86/**", "**/libVkLayer_khronos_validation.so")
         }
     }

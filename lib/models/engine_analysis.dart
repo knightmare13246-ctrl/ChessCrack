@@ -385,6 +385,40 @@ class PositionAnalysis {
 
   double get whiteWinPercentage => normalizedEvaluation.whiteExpectedScore;
 
-  String get formattedHeader =>
-      'Nodes: $totalNodes, N/s: $nodesPerSecond${depth > 0 ? ', Depth: $depth' : ''}';
+  String get formattedHeader {
+    final formattedNodes = _formatNumber(totalNodes);
+    final String npsText;
+    if (isAnalyzing) {
+      if (nodesPerSecond > 0) {
+        npsText = 'N/s: ${_formatNumber(nodesPerSecond)}';
+      } else {
+        npsText = (engineName?.toLowerCase().contains('leela') == true ||
+                engineName?.toLowerCase().contains('lc0') == true ||
+                engineName?.toLowerCase().contains('maia') == true)
+            ? 'N/s: N/A'
+            : 'N/s: —';
+      }
+    } else {
+      npsText = 'N/s: —';
+    }
+
+    final depthText = depth > 0 ? ', Depth: $depth' : '';
+    final statusPrefix = !isAnalyzing ? 'Paused · ' : '';
+    return '${statusPrefix}Nodes: $formattedNodes, $npsText$depthText';
+  }
+
+  static String _formatNumber(int n) {
+    if (n < 1000) return '$n';
+    final str = n.toString();
+    final buffer = StringBuffer();
+    int count = 0;
+    for (int i = str.length - 1; i >= 0; i--) {
+      buffer.write(str[i]);
+      count++;
+      if (count % 3 == 0 && i != 0) {
+        buffer.write(',');
+      }
+    }
+    return buffer.toString().split('').reversed.join('');
+  }
 }

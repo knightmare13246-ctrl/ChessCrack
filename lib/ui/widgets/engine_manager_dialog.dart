@@ -46,7 +46,7 @@ class _EngineManagerDialogState extends State<EngineManagerDialog> {
     super.initState();
     _currentSettings = widget.settings;
     _downloadService.addListener(_onServiceUpdate);
-    _downloadService.initialize();
+    _downloadService.refreshStatuses();
   }
 
   @override
@@ -63,7 +63,9 @@ class _EngineManagerDialogState extends State<EngineManagerDialog> {
     setState(() {
       _currentSettings = _currentSettings.copyWith(
         activeEngine: type,
-        selectedMaiaId: type == EngineType.stockfish ? null : _currentSettings.selectedMaiaId,
+        selectedMaiaId: null,
+        weightsPath: null,
+        nodeLimit: null,
       );
     });
     widget.onSettingsChanged(_currentSettings);

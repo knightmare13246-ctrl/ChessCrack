@@ -19,7 +19,7 @@ class EngineArtifactInfo {
   final String filename;
   final String officialSourceUrl;
   final String downloadUrl;
-  final String localExecutablePath;
+  String localExecutablePath;
   final String metadataPath;
   final int expectedSizeBytes;
   final String abi;
@@ -49,7 +49,7 @@ class EngineArtifactInfo {
     this.installedSizeBytes = 0,
   });
 
-  bool get isInstalled => status == DownloadStatus.installed && File(localExecutablePath).existsSync();
+  bool get isInstalled => status == DownloadStatus.installed;
   bool get isDownloading => status == DownloadStatus.downloading || status == DownloadStatus.verifying || status == DownloadStatus.installing;
 }
 
