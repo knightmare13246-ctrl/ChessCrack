@@ -1,0 +1,39 @@
+Categories:
+  - Science & Education
+  - Development
+License: GPL-3.0-or-later
+AuthorName: ChessCrack Contributors
+AuthorEmail: developer@chesscrack.org
+SourceCode: https://github.com/knightmare13246-ctrl/ChessCrack
+IssueTracker: https://github.com/knightmare13246-ctrl/ChessCrack/issues
+
+AutoUpdateMode: Version v%v
+UpdateCheckMode: Tags
+CurrentVersion: 1.0.0
+CurrentVersionCode: 1
+
+AutoName: ChessCrack
+Summary: Offline UCI chess engine & neural network analysis workbench
+Description: |-
+  ChessCrack is an offline UCI chess engine analysis workbench and neural
+  network study utility designed for players, coaches, and researchers.
+
+  Key Features:
+  * Modular on-demand UCI engine management (Stockfish 19, Leela Chess Zero).
+  * Human-style sparring and training policy evaluation with Maia neural networks.
+  * Real-time Multi-PV line calculation, WDL win/draw/loss probability distribution, and live eval bar.
+  * Interactive candidate move arrows colored by engine preference.
+  * Zero-binary base packaging: initial APK contains no bulky engine binaries; assets download on-demand into sandboxed storage.
+  * Complete privacy: 100% offline analysis, zero trackers, zero advertisements, and minimal permissions.
+
+RepoType: git
+Repo: https://github.com/knightmare13246-ctrl/ChessCrack.git
+
+Builds:
+  - versionName: 1.0.0
+    versionCode: 1
+    commit: v1.0.0
+    flutter: yes
+    gradle:
+      - yes
+    output: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
