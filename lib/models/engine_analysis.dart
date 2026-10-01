@@ -386,6 +386,12 @@ class PositionAnalysis {
   double get whiteWinPercentage => normalizedEvaluation.whiteExpectedScore;
 
   String get formattedHeader {
+    final bool isMaia = (engineName?.toLowerCase().contains('maia') == true);
+    if (isMaia) {
+      final status = isAnalyzing ? 'Evaluating Human Moves...' : 'Evaluation Complete (1-ply Policy)';
+      return '$engineName · $status';
+    }
+
     final formattedNodes = _formatNumber(totalNodes);
     final String npsText;
     if (isAnalyzing) {
@@ -393,8 +399,7 @@ class PositionAnalysis {
         npsText = 'N/s: ${_formatNumber(nodesPerSecond)}';
       } else {
         npsText = (engineName?.toLowerCase().contains('leela') == true ||
-                engineName?.toLowerCase().contains('lc0') == true ||
-                engineName?.toLowerCase().contains('maia') == true)
+                engineName?.toLowerCase().contains('lc0') == true)
             ? 'N/s: N/A'
             : 'N/s: —';
       }

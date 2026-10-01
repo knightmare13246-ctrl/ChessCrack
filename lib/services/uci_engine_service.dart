@@ -772,12 +772,10 @@ class UciEngineService {
     );
 
     // Calculate real telemetry fields
-    final double winProb = (wdl != null && wdl.length >= 3)
-        ? ((wdl[0] / (wdl[0] + wdl[1] + wdl[2])) * 100.0)
-        : moveEvaluation.winProbability;
     final double expScore = (wdl != null && wdl.length >= 3)
         ? (((wdl[0] + 0.5 * wdl[1]) / (wdl[0] + wdl[1] + wdl[2])) * 100.0)
         : moveEvaluation.expectedScore;
+    final double winProb = expScore;
 
     final candidateVisits = nodes;
     final effectiveTotalNodes = math.max(_currentNodes, candidateVisits);

@@ -500,21 +500,37 @@ class _EngineManagerDialogState extends State<EngineManagerDialog> {
                   ),
                 ),
 
-              // Delete button (only when installed and not currently downloading)
+              // Action or delete button (only when installed and not currently downloading)
               if (isInstalled && !isDownloading)
-                TextButton.icon(
-                  onPressed: () => _confirmRemove(
-                    title: 'Remove ${info.name}?',
-                    content: 'This will delete the local executable (${EngineStorageSummary.formatBytes(info.installedSizeBytes)}) from private storage. You can re-download it anytime.',
-                    onConfirm: onRemove,
-                  ),
-                  icon: const Icon(Icons.delete_outline, size: 15, color: Colors.redAccent),
-                  label: const Text('DELETE', style: TextStyle(color: Colors.redAccent, fontSize: 10.5, fontWeight: FontWeight.bold)),
-                  style: TextButton.styleFrom(
+                if (info.isBundled)
+                  Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    visualDensity: VisualDensity.compact,
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.verified, size: 13, color: Color(0xFF81C784)),
+                        SizedBox(width: 4),
+                        Text(
+                          'INCLUDED IN APP',
+                          style: TextStyle(color: Color(0xFF81C784), fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  TextButton.icon(
+                    onPressed: () => _confirmRemove(
+                      title: 'Remove ${info.name}?',
+                      content: 'This will delete the local executable (${EngineStorageSummary.formatBytes(info.installedSizeBytes)}) from private storage. You can re-download it anytime.',
+                      onConfirm: onRemove,
+                    ),
+                    icon: const Icon(Icons.delete_outline, size: 15, color: Colors.redAccent),
+                    label: const Text('DELETE', style: TextStyle(color: Colors.redAccent, fontSize: 10.5, fontWeight: FontWeight.bold)),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      visualDensity: VisualDensity.compact,
+                    ),
                   ),
-                ),
             ],
           ),
         ],
@@ -720,13 +736,24 @@ class _EngineManagerDialogState extends State<EngineManagerDialog> {
                   onPressed: () => _confirmRemove(
                     title: 'Remove ${model.name}?',
                     content: 'This will delete the local neural network file (${model.filename}). Lc0 engine will stay installed.',
-                    onConfirm: () => _downloadService.removeMaiaModel(
-                      model.id,
-                      onBeforeDelete: widget.onBeforeEngineRemoved,
-                    ),
+                    onConfirm: () async {
+                      if (_currentSettings.selectedMaiaId == model.id) {
+                        _currentSettings = _currentSettings.copyWith(
+                          selectedMaiaId: null,
+                          weightsPath: null,
+                          activeEngine: EngineType.stockfish,
+                        );
+                        widget.onSettingsChanged(_currentSettings);
+                      }
+                      await _downloadService.removeMaiaModel(
+                        model.id,
+                        onBeforeDelete: widget.onBeforeEngineRemoved,
+                      );
+                      if (mounted) setState(() {});
+                    },
                   ),
-                  icon: const Icon(Icons.delete_outline, size: 14, color: Colors.white54),
-                  label: const Text('DELETE', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                  icon: const Icon(Icons.delete_outline, size: 14, color: Colors.redAccent),
+                  label: const Text('DELETE', style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold)),
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     visualDensity: VisualDensity.compact,

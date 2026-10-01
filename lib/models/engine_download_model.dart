@@ -51,6 +51,7 @@ class EngineArtifactInfo {
 
   bool get isInstalled => status == DownloadStatus.installed;
   bool get isDownloading => status == DownloadStatus.downloading || status == DownloadStatus.verifying || status == DownloadStatus.installing;
+  bool get isBundled => isInstalled && (localExecutablePath.contains('/lib/') || localExecutablePath.endsWith('.so'));
 }
 
 class MaiaModelInfo {

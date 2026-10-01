@@ -426,24 +426,27 @@ class EngineAnalysisPanel extends StatelessWidget {
 
   String _formatLineMetrics(PvLine line, Set<String> enabledStats) {
     final parts = <String>[];
+    final bool isMaia = (settings?.isMaiaActive == true) || (line.policyPercentage != null && line.nodes <= 1);
 
-    if (enabledStats.contains('nodePct') && line.visitPercentage != null) {
-      parts.add('N: ${line.visitPercentage!.toStringAsFixed(1)}%');
-    }
     if (enabledStats.contains('policy') && line.policyPercentage != null) {
       parts.add('P: ${line.policyPercentage!.toStringAsFixed(1)}%');
+    }
+    if (!isMaia && enabledStats.contains('nodePct') && line.visitPercentage != null) {
+      parts.add('N: ${line.visitPercentage!.toStringAsFixed(1)}%');
     }
     if (enabledStats.contains('movesLeft') && line.movesLeft != null) {
       parts.add('M: ${line.movesLeft!.toStringAsFixed(0)}');
     }
-    if (enabledStats.contains('depth') && line.depth > 0) {
-      parts.add('d: ${line.depth}');
-    }
-    if (enabledStats.contains('nodes') && line.nodes > 0) {
-      parts.add('nodes: ${line.nodes}');
-    }
-    if (enabledStats.contains('nps') && line.nps > 0) {
-      parts.add('${(line.nps / 1000).toStringAsFixed(0)}k nps');
+    if (!isMaia) {
+      if (enabledStats.contains('depth') && line.depth > 0) {
+        parts.add('d: ${line.depth}');
+      }
+      if (enabledStats.contains('nodes') && line.nodes > 0) {
+        parts.add('nodes: ${line.nodes}');
+      }
+      if (enabledStats.contains('nps') && line.nps > 0) {
+        parts.add('${(line.nps / 1000).toStringAsFixed(0)}k nps');
+      }
     }
 
     return parts.join(', ');
