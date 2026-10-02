@@ -62,7 +62,7 @@ class EngineAnalysisPanel extends StatelessWidget {
           'wdl',
         };
 
-    final headerText = analysis != null && lines.isNotEmpty
+    final headerText = analysis != null && (lines.isNotEmpty || analysis!.totalNodes != null || analysis!.depth != null || analysis!.isMaia)
         ? analysis!.formattedHeader
         : (isAnalyzing ? 'Analyzing position...' : 'Tap Analyze to start engine evaluation');
 
@@ -438,14 +438,14 @@ class EngineAnalysisPanel extends StatelessWidget {
       parts.add('M: ${line.movesLeft!.toStringAsFixed(0)}');
     }
     if (!isMaia) {
-      if (enabledStats.contains('depth') && line.depth > 0) {
+      if (enabledStats.contains('depth') && line.depth != null && line.depth! > 0) {
         parts.add('d: ${line.depth}');
       }
-      if (enabledStats.contains('nodes') && line.nodes > 0) {
+      if (enabledStats.contains('nodes') && line.nodes != null && line.nodes! > 0) {
         parts.add('nodes: ${line.nodes}');
       }
-      if (enabledStats.contains('nps') && line.nps > 0) {
-        parts.add('${(line.nps / 1000).toStringAsFixed(0)}k nps');
+      if (enabledStats.contains('nps') && line.nps != null && line.nps! > 0) {
+        parts.add('${(line.nps! / 1000).toStringAsFixed(0)}k nps');
       }
     }
 

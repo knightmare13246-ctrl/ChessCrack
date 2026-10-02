@@ -47,6 +47,9 @@ void main() {
     expect(find.text('Winrate'), findsOneWidget);
     expect(find.text('Policy'), findsOneWidget);
     expect(find.text('Node %'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('ArrowSettingsDialog allows selecting Policy mode and updates settings', (WidgetTester tester) async {
@@ -76,5 +79,8 @@ void main() {
 
     expect(updatedResult, isNotNull);
     expect(updatedResult!.arrowheadType, equals(ArrowheadType.policy));
+
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
   });
 }

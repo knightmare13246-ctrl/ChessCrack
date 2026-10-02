@@ -12,6 +12,16 @@ enum DownloadStatus {
   unsupported,
 }
 
+enum EngineInstallationState {
+  uninstalled,
+  downloading,
+  verifying,
+  installed,
+  ready,
+  deleting,
+  error,
+}
+
 class EngineArtifactInfo {
   final String id;
   final String name;
@@ -52,6 +62,25 @@ class EngineArtifactInfo {
   bool get isInstalled => status == DownloadStatus.installed;
   bool get isDownloading => status == DownloadStatus.downloading || status == DownloadStatus.verifying || status == DownloadStatus.installing;
   bool get isBundled => isInstalled && (localExecutablePath.contains('/lib/') || localExecutablePath.endsWith('.so'));
+
+  EngineInstallationState get installationState {
+    switch (status) {
+      case DownloadStatus.notInstalled:
+      case DownloadStatus.cancelled:
+      case DownloadStatus.unsupported:
+        return EngineInstallationState.uninstalled;
+      case DownloadStatus.queued:
+      case DownloadStatus.downloading:
+        return EngineInstallationState.downloading;
+      case DownloadStatus.verifying:
+      case DownloadStatus.installing:
+        return EngineInstallationState.verifying;
+      case DownloadStatus.installed:
+        return EngineInstallationState.installed;
+      case DownloadStatus.error:
+        return EngineInstallationState.error;
+    }
+  }
 }
 
 class MaiaModelInfo {
@@ -97,6 +126,27 @@ class MaiaModelInfo {
 
   bool get isInstalled => status == DownloadStatus.installed && File(localPath).existsSync();
   bool get isDownloading => status == DownloadStatus.downloading || status == DownloadStatus.verifying;
+
+  EngineInstallationState get installationState {
+    switch (status) {
+      case DownloadStatus.notInstalled:
+      case DownloadStatus.cancelled:
+      case DownloadStatus.unsupported:
+        return EngineInstallationState.uninstalled;
+      case DownloadStatus.queued:
+      case DownloadStatus.downloading:
+        return EngineInstallationState.downloading;
+      case DownloadStatus.verifying:
+      case DownloadStatus.installing:
+        return EngineInstallationState.verifying;
+      case DownloadStatus.installed:
+        return File(localPath).existsSync()
+            ? EngineInstallationState.installed
+            : EngineInstallationState.uninstalled;
+      case DownloadStatus.error:
+        return EngineInstallationState.error;
+    }
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,

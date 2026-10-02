@@ -20,6 +20,8 @@ class UciEngineService {
   int get activeProcessCount => isProcessAlive ? 1 : 0;
   bool _isPausedForBackground = false;
   bool get isPausedForBackground => _isPausedForBackground;
+  bool _isAnalysisPaused = false;
+  bool get isAnalysisPaused => _isAnalysisPaused;
 
   EngineSettings _settings;
   EngineSettings get settings => _settings;
@@ -37,24 +39,46 @@ class UciEngineService {
       _activationState == EngineActivationState.starting;
 
   // Search State Machine (Nibbler model)
-  EngineSearchState _searchState = EngineSearchState.idle;
-  EngineSearchState get searchState => _searchState;
+  AnalysisDataState _searchState = AnalysisDataState.idle;
+  AnalysisDataState get searchState => _searchState;
 
   // Lifecycle State for UI diagnostics
-  EngineLifecycleState _lifecycleState = EngineLifecycleState.idle;
+  EngineLifecycleState _lifecycleState = EngineLifecycleState.uninitialized;
   EngineLifecycleState get lifecycleState => _lifecycleState;
 
   bool _isAnalyzing = false;
   bool get isAnalyzing => _isAnalyzing;
-  bool get isEngineReady =>
-      _lifecycleState == EngineLifecycleState.ready ||
-      _lifecycleState == EngineLifecycleState.analyzing;
+  bool get isEngineReady => _lifecycleState == EngineLifecycleState.ready;
 
-  // Monotonic Revision & Request Tracking
+  // Engine Session & Monotonic Revision/Request Tracking
+  int _engineSessionId = 0;
+  int get engineSessionId => _engineSessionId;
+
   int _positionRevision = 0;
   int _analysisRequestId = 0;
   int get positionRevision => _positionRevision;
   int get analysisRequestId => _analysisRequestId;
+
+  AnalysisGeneration get currentGeneration => AnalysisGeneration(
+        positionRevision: _positionRevision,
+        analysisRequestId: _analysisRequestId,
+        engineSessionId: _engineSessionId,
+      );
+
+  String get effectiveEngineDisplayName {
+    if (_settings.isMaiaActive && _settings.selectedMaiaId != null) {
+      final eloStr = _settings.selectedMaiaId!.replaceAll('maia_', '');
+      return 'Maia $eloStr';
+    }
+    return _settings.activeEngine.displayName;
+  }
+
+  int? get currentMaiaElo {
+    if (_settings.isMaiaActive && _settings.selectedMaiaId != null) {
+      return int.tryParse(_settings.selectedMaiaId!.replaceAll('maia_', ''));
+    }
+    return null;
+  }
 
   String? _activeSearchFen;
   String? _pendingSearchFen;
@@ -64,9 +88,18 @@ class UciEngineService {
   String _currentFen = ChessPosition.initialFen;
   bool _currentTurnIsWhite = true;
 
-  int _currentNodes = 0;
-  int _currentNps = 0;
-  int _currentDepth = 0;
+  int? _currentNodes;
+  int? _currentNps;
+  int? _currentDepth;
+  int? _currentSeldepth;
+  int? _currentTimeMs;
+
+  int? get currentNodes => _currentNodes;
+  int? get currentNps => _currentNps;
+  int? get currentDepth => _currentDepth;
+  int? get currentSeldepth => _currentSeldepth;
+  int? get currentTimeMs => _currentTimeMs;
+
   final Map<int, PvLine> _currentLines = {};
 
   // Candidate arrows map indexed by MultiPV rank
@@ -84,8 +117,6 @@ class UciEngineService {
   String _engineVersion = '';
   String get engineVersion => _engineVersion;
 
-  int _currentSeldepth = 0;
-  int _currentTimeMs = 0;
   int _currentHashfull = 0;
   int _currentTbhits = 0;
   String? _lastBestmove;
@@ -125,19 +156,17 @@ class UciEngineService {
     if (settings != null) {
       _settings = settings;
     }
-    // 1. Idempotent session reuse: If engine process is already alive and ready/analyzing/idle,
+    // 1. Idempotent session reuse: If engine process is already alive and ready/idle,
     // and no forced restart is requested and engine has not changed, reuse the session immediately.
     if (!forceRestart &&
         !engineChanged &&
         isProcessAlive &&
-        (_lifecycleState == EngineLifecycleState.ready ||
-            _lifecycleState == EngineLifecycleState.analyzing ||
-            _lifecycleState == EngineLifecycleState.idle)) {
+        _lifecycleState == EngineLifecycleState.ready) {
       _setLifecycle(_lifecycleState, '${_settings.activeEngine.displayName} active (reused session)');
       return;
     }
 
-    _setLifecycle(EngineLifecycleState.starting, 'Awaiting engine initialization...');
+    _setLifecycle(EngineLifecycleState.initializing, 'Awaiting engine initialization...');
 
     if (binaryPath == null || !File(binaryPath).existsSync()) {
       _setLifecycle(EngineLifecycleState.error, '${_settings.activeEngine.displayName} failed to start: binary not found');
@@ -163,8 +192,8 @@ class UciEngineService {
       _requestedMultiPv = _settings.multiPv;
       _optionsApplied = false;
       _readyOkReceived = false;
-      _currentSeldepth = 0;
-      _currentTimeMs = 0;
+      _currentSeldepth = null;
+      _currentTimeMs = null;
       _currentHashfull = 0;
       _currentTbhits = 0;
       _lastBestmove = null;
@@ -175,20 +204,23 @@ class UciEngineService {
       _positionPolicyCache.clear();
       _positionVisitsCache.clear();
       _positionMlhCache.clear();
-      _currentNodes = 0;
-      _currentNps = 0;
-      _currentDepth = 0;
+      _currentNodes = null;
+      _currentNps = null;
+      _currentDepth = null;
       _detectedBackend = 'auto';
       _detectedDevice = 'CPU';
       _detectedNetwork = 'default';
       _evaluationNotifier.value = NormalizedEvaluation.neutral;
+
+      _engineSessionId++;
+      final localSessionId = _engineSessionId;
       _engineProcess = await Process.start(binaryPath, args);
       _engineProcess!.exitCode.then((_) => _processExited = true);
 
       _engineProcess!.stdout
           .transform(utf8.decoder)
           .transform(const LineSplitter())
-          .listen(_handleEngineOutput);
+          .listen((line) => _handleEngineOutput(line, sessionId: localSessionId));
 
       _engineProcess!.stderr
           .transform(utf8.decoder)
@@ -250,8 +282,10 @@ class UciEngineService {
 
     stopAnalysis();
 
+    await _disposeProcess();
+
     _activationState = EngineActivationState.disabled;
-    _setLifecycle(EngineLifecycleState.idle, 'Engine disabled');
+    _setLifecycle(EngineLifecycleState.disposed, 'Engine disabled');
 
     // Completely clear candidate lines and evaluation
     _currentLines.clear();
@@ -259,9 +293,11 @@ class UciEngineService {
     _positionPolicyCache.clear();
     _positionVisitsCache.clear();
     _positionMlhCache.clear();
-    _currentNodes = 0;
-    _currentNps = 0;
-    _currentDepth = 0;
+    _currentNodes = null;
+    _currentNps = null;
+    _currentDepth = null;
+    _currentSeldepth = null;
+    _currentTimeMs = null;
     _activeSearchFen = null;
     _pendingSearchFen = null;
 
@@ -308,9 +344,47 @@ class UciEngineService {
     }
   }
 
-  void _handleEngineOutput(String line) {
+  bool _validateStreamLine({
+    required int? sessionId,
+    required String rawLine,
+    bool isBestMove = false,
+  }) {
+    if (sessionId != null && sessionId != _engineSessionId) return false;
+    if (_activationState != EngineActivationState.enabled) return false;
+    if (_searchState == AnalysisDataState.stopping) {
+      if (!isBestMove) {
+        EngineTraceLogger.instance.log(
+          requestId: _analysisRequestId,
+          activeFen: _activeSearchFen ?? _currentFen,
+          pendingFen: _pendingSearchFen,
+          engineState: _searchState,
+          activationState: _activationState,
+          rawUciLine: rawLine,
+          action: 'DISCARDED_STOPPING',
+        );
+        return false;
+      }
+      return true;
+    }
+    if (!isBestMove && _activeSearchFen != _currentFen) {
+      EngineTraceLogger.instance.log(
+        requestId: _analysisRequestId,
+        activeFen: _activeSearchFen ?? _currentFen,
+        pendingFen: _pendingSearchFen,
+        engineState: _searchState,
+        activationState: _activationState,
+        rawUciLine: rawLine,
+        action: 'DISCARDED_FEN_MISMATCH',
+      );
+      return false;
+    }
+    return true;
+  }
+
+  void _handleEngineOutput(String line, {int? sessionId}) {
     final trimmed = line.trim();
     if (trimmed.isEmpty) return;
+    if (sessionId != null && sessionId != _engineSessionId) return;
 
     _detectEngineMetadata(trimmed);
 
@@ -328,19 +402,23 @@ class UciEngineService {
       if (_readyCompleter != null && !_readyCompleter!.isCompleted) {
         _readyCompleter!.complete();
       }
-      if (_isAnalyzing && _activationState == EngineActivationState.enabled && _searchState != EngineSearchState.searching) {
+      if (_isAnalyzing && _activationState == EngineActivationState.enabled && _searchState != AnalysisDataState.searching) {
         _startSearchOnEngine();
       }
     } else if (trimmed.startsWith('info string ')) {
-      _parseInfoStringLine(trimmed);
+      _parseInfoStringLine(trimmed, sessionId: sessionId);
     } else if (trimmed.startsWith('info ')) {
-      _parseInfoLine(trimmed);
+      _parseInfoLine(trimmed, sessionId: sessionId);
     } else if (trimmed == 'bestmove' || trimmed.startsWith('bestmove ')) {
-      _handleBestMove(trimmed);
+      _handleBestMove(trimmed, sessionId: sessionId);
     }
   }
 
-  void _handleBestMove(String line) {
+  void _handleBestMove(String line, {int? sessionId}) {
+    if (!_validateStreamLine(sessionId: sessionId ?? _engineSessionId, rawLine: line, isBestMove: true)) {
+      return;
+    }
+
     final bmTokens = line.trim().split(RegExp(r'\s+'));
     if (bmTokens.length > 1 && bmTokens[1] != '(none)') {
       _lastBestmove = bmTokens[1];
@@ -356,12 +434,12 @@ class UciEngineService {
       engineState: _searchState,
       activationState: _activationState,
       rawUciLine: line,
-      action: _searchState == EngineSearchState.stopping ? 'BESTMOVE_STOP_COMPLETION' : 'BESTMOVE_NATURAL_STOP',
+      action: _searchState == AnalysisDataState.stopping ? 'BESTMOVE_STOP_COMPLETION' : 'BESTMOVE_NATURAL_STOP',
     );
 
-    if (_searchState == EngineSearchState.stopping) {
+    if (_searchState == AnalysisDataState.stopping) {
       // Bestmove from previous aborted search: treat strictly as STOP COMPLETION
-      _searchState = EngineSearchState.ready;
+      _searchState = AnalysisDataState.idle;
 
       if (_pendingSearchFen != null && _activationState == EngineActivationState.enabled) {
         // Launch pending search cleanly
@@ -371,19 +449,19 @@ class UciEngineService {
         _pendingRequestId = null;
 
         _activeSearchFen = fenToSearch;
-        _searchState = EngineSearchState.searching;
+        _searchState = AnalysisDataState.searching;
         _isAnalyzing = true;
-        _currentNodes = 0;
-        _currentNps = 0;
-        _currentDepth = 0;
-        _currentSeldepth = 0;
-        _currentTimeMs = 0;
+        _currentNodes = null;
+        _currentNps = null;
+        _currentDepth = null;
+        _currentSeldepth = null;
+        _currentTimeMs = null;
         _currentHashfull = 0;
         _currentTbhits = 0;
         _currentLines.clear();
         _candidateArrowsMap.clear();
 
-        _setLifecycle(EngineLifecycleState.analyzing, 'Analyzing with ${_settings.activeEngine.displayName} (Req #$reqId)');
+        _setLifecycle(EngineLifecycleState.ready, 'Analyzing with ${_settings.activeEngine.displayName} (Req #$reqId)');
         _sendCommand('position fen $fenToSearch');
         final effectiveNodeLimit = _effectiveNodeLimit;
         if (effectiveNodeLimit != null) {
@@ -403,20 +481,26 @@ class UciEngineService {
       } else {
         _isAnalyzing = false;
         _activeSearchFen = null;
-        _setLifecycle(EngineLifecycleState.ready, 'Engine stopped');
+        _searchState = _isAnalysisPaused
+            ? AnalysisDataState.paused
+            : AnalysisDataState.idle;
+        _setLifecycle(
+          EngineLifecycleState.ready,
+          _isAnalysisPaused ? 'Analysis paused' : 'Engine stopped',
+        );
         _emitThrottledAnalysis(force: true);
       }
-    } else if (_searchState == EngineSearchState.searching) {
+    } else if (_searchState == AnalysisDataState.searching) {
       final effectiveNodeLimit = _effectiveNodeLimit;
       if (effectiveNodeLimit != null) {
         // Natural stop because an explicit node limit was set and reached
-        _searchState = EngineSearchState.ready;
+        _searchState = AnalysisDataState.completed;
         _isAnalyzing = false;
         _setLifecycle(EngineLifecycleState.ready, 'Analysis complete ($effectiveNodeLimit nodes reached)');
         _emitThrottledAnalysis(force: true);
       } else if (_currentPosition.legalMoves.isEmpty || _lastBestmove == '(none)') {
         // Natural stop because position has no legal moves (checkmate/stalemate)
-        _searchState = EngineSearchState.ready;
+        _searchState = AnalysisDataState.completed;
         _isAnalyzing = false;
         _setLifecycle(EngineLifecycleState.ready, 'Analysis complete (game end)');
         _emitThrottledAnalysis(force: true);
@@ -439,12 +523,12 @@ class UciEngineService {
   }
 
   Future<void> _waitForStopCompletion({Duration timeout = const Duration(milliseconds: 600)}) async {
-    if (_searchState != EngineSearchState.stopping) return;
+    if (_searchState != AnalysisDataState.stopping) return;
     _stopCompleter = Completer<void>();
     try {
       await _stopCompleter!.future.timeout(timeout);
     } catch (_) {
-      _searchState = EngineSearchState.ready;
+      _searchState = AnalysisDataState.idle;
     } finally {
       _stopCompleter = null;
     }
@@ -526,7 +610,10 @@ class UciEngineService {
 
   /// Parses verbose move telemetry from Lc0 VerboseMoveStats:
   /// e.g. "info string e2e4  (322 ) N:       7 (+ 0) (P: 22.22%) (WL:  0.10589) (D: 0.480) (M: 167.4)..."
-  void _parseInfoStringLine(String line) {
+  void _parseInfoStringLine(String line, {int? sessionId}) {
+    if (!_validateStreamLine(sessionId: sessionId ?? _engineSessionId, rawLine: line, isBestMove: false)) {
+      return;
+    }
     final afterPrefix = line.substring(12).trim();
     final tokens = afterPrefix.split(RegExp(r'\s+'));
     if (tokens.isEmpty) return;
@@ -559,10 +646,13 @@ class UciEngineService {
       }
     }
 
-    // Update existing candidate arrow for this move if already present
+    // Update existing candidate arrow for this move if already present and matching current generation
     bool updated = false;
     for (final entry in _candidateArrowsMap.entries) {
-      if (entry.value.uciMove == moveToken) {
+      if (entry.value.uciMove == moveToken &&
+          entry.value.positionRevision == _positionRevision &&
+          entry.value.requestId == _analysisRequestId &&
+          entry.value.engineSessionId == _engineSessionId) {
         _candidateArrowsMap[entry.key] = entry.value.copyWith(
           policyPercentage: _positionPolicyCache[moveToken],
           visits: _positionVisitsCache[moveToken] ?? entry.value.visits,
@@ -577,50 +667,23 @@ class UciEngineService {
     }
   }
 
-  void _parseInfoLine(String line) {
-    // 1. State Machine Guard: If engine is currently stopping an old search, drop immediately
-    if (_searchState == EngineSearchState.stopping) {
-      EngineTraceLogger.instance.log(
-        requestId: _analysisRequestId,
-        activeFen: _activeSearchFen ?? _currentFen,
-        pendingFen: _pendingSearchFen,
-        engineState: _searchState,
-        activationState: _activationState,
-        rawUciLine: line,
-        action: 'DISCARDED_STOPPING',
-      );
-      return;
-    }
-
-    // 2. Engine Activation Guard: Drop if engine analysis is disabled
-    if (_activationState != EngineActivationState.enabled) {
-      return;
-    }
-
-    // 3. FEN Guard: Drop if line does not match current board FEN
-    if (_activeSearchFen != _currentFen) {
-      EngineTraceLogger.instance.log(
-        requestId: _analysisRequestId,
-        activeFen: _activeSearchFen ?? _currentFen,
-        engineState: _searchState,
-        activationState: _activationState,
-        rawUciLine: line,
-        action: 'DISCARDED_FEN_MISMATCH',
-      );
+  void _parseInfoLine(String line, {int? sessionId}) {
+    if (!_validateStreamLine(sessionId: sessionId ?? _engineSessionId, rawLine: line, isBestMove: false)) {
       return;
     }
 
     final capturedRev = _positionRevision;
     final capturedReqId = _analysisRequestId;
+    final capturedSessId = _engineSessionId;
 
     final tokens = line.split(RegExp(r'\s+'));
     int multipv = 1;
     int? scoreCp;
     int? scoreMate;
-    int depth = _currentDepth;
-    int seldepth = 0;
-    int nodes = _currentNodes;
-    int nps = _currentNps;
+    int? depth = _currentDepth;
+    int? seldepth = _currentSeldepth;
+    int? nodes = _currentNodes;
+    int? nps = _currentNps;
     List<int>? wdl;
     double? visitPct;
     double? policyPct;
@@ -635,35 +698,35 @@ class UciEngineService {
       } else if (t == 'depth' && i + 1 < tokens.length) {
         final dVal = int.tryParse(tokens[++i]);
         if (dVal != null) {
-          depth = math.max(depth, dVal);
-          _currentDepth = math.max(_currentDepth, dVal);
+          depth = depth != null ? math.max(depth, dVal) : dVal;
+          _currentDepth = _currentDepth != null ? math.max(_currentDepth!, dVal) : dVal;
         }
       } else if (t == 'seldepth' && i + 1 < tokens.length) {
         final sdVal = int.tryParse(tokens[++i]);
         if (sdVal != null) {
-          seldepth = math.max(seldepth, sdVal);
-          _currentSeldepth = math.max(_currentSeldepth, sdVal);
+          seldepth = seldepth != null ? math.max(seldepth, sdVal) : sdVal;
+          _currentSeldepth = _currentSeldepth != null ? math.max(_currentSeldepth!, sdVal) : sdVal;
         }
       } else if (t == 'time' && i + 1 < tokens.length) {
         final tVal = int.tryParse(tokens[++i]);
         if (tVal != null) {
-          _currentTimeMs = math.max(_currentTimeMs, tVal);
+          _currentTimeMs = _currentTimeMs != null ? math.max(_currentTimeMs!, tVal) : tVal;
         }
       } else if (t == 'nodes' && i + 1 < tokens.length) {
         final nVal = int.tryParse(tokens[++i]);
         if (nVal != null) {
-          nodes = math.max(nodes, nVal);
-          _currentNodes = math.max(_currentNodes, nVal);
+          nodes = nodes != null ? math.max(nodes, nVal) : nVal;
+          _currentNodes = _currentNodes != null ? math.max(_currentNodes!, nVal) : nVal;
         }
       } else if (t == 'nps' && i + 1 < tokens.length) {
         final npsVal = int.tryParse(tokens[++i]);
         if (npsVal != null && npsVal > 0) {
-          if (multipv == 1 || _currentNps == 0) {
+          if (multipv == 1 || _currentNps == null || _currentNps == 0) {
             nps = npsVal;
             _currentNps = npsVal;
           } else {
-            nps = math.max(nps, npsVal);
-            _currentNps = math.max(_currentNps, npsVal);
+            nps = nps != null ? math.max(nps, npsVal) : npsVal;
+            _currentNps = _currentNps != null ? math.max(_currentNps!, npsVal) : npsVal;
           }
         }
       } else if (t == 'hashfull' && i + 1 < tokens.length) {
@@ -705,8 +768,10 @@ class UciEngineService {
 
     if (movesUci.isEmpty) return;
 
-    // Strict revision and request protection
-    if (capturedRev != _positionRevision || capturedReqId != _analysisRequestId) {
+    // Strict revision, request, and session protection
+    if (capturedRev != _positionRevision ||
+        capturedReqId != _analysisRequestId ||
+        capturedSessId != _engineSessionId) {
       return;
     }
 
@@ -733,9 +798,9 @@ class UciEngineService {
       scoreCp: scoreCp,
       scoreMate: scoreMate,
       wdl: wdl,
-      nodes: nodes,
-      nps: nps,
-      depth: depth,
+      nodes: nodes ?? 0,
+      nps: nps ?? 0,
+      depth: depth ?? 0,
       visitPct: visitPct,
       policyPct: policyPct ?? _positionPolicyCache[firstMoveUci],
       utility: utility,
@@ -768,6 +833,7 @@ class UciEngineService {
       movesLeft: movesLeft ?? _positionMlhCache[firstMoveUci],
       positionRevision: capturedRev,
       analysisRequestId: capturedReqId,
+      engineSessionId: capturedSessId,
       evaluation: moveEvaluation,
     );
 
@@ -778,8 +844,8 @@ class UciEngineService {
     final double winProb = expScore;
 
     final candidateVisits = nodes;
-    final effectiveTotalNodes = math.max(_currentNodes, candidateVisits);
-    final double? nodePct = effectiveTotalNodes > 0
+    final effectiveTotalNodes = math.max(_currentNodes ?? 0, candidateVisits ?? 0);
+    final double? nodePct = (effectiveTotalNodes > 0 && candidateVisits != null)
         ? ((candidateVisits / effectiveTotalNodes) * 100.0)
         : visitPct;
 
@@ -809,6 +875,7 @@ class UciEngineService {
       depth: depth,
       positionRevision: capturedRev,
       requestId: capturedReqId,
+      engineSessionId: capturedSessId,
       sourceFen: _currentFen,
       style: arrowStyle,
     );
@@ -865,14 +932,24 @@ class UciEngineService {
   void _emitThrottledAnalysis({bool force = false}) {
     if (!isEngineEnabled && !force) return;
 
-    final sortedLines = _currentLines.values.toList()
+    final sortedLines = _currentLines.values
+        .where((l) =>
+            l.positionRevision == _positionRevision &&
+            l.analysisRequestId == _analysisRequestId &&
+            l.engineSessionId == _engineSessionId)
+        .toList()
       ..sort((a, b) => a.multipv.compareTo(b.multipv));
 
-    final rawArrows = _candidateArrowsMap.values.toList()
+    final rawArrows = _candidateArrowsMap.values
+        .where((a) =>
+            a.positionRevision == _positionRevision &&
+            a.requestId == _analysisRequestId &&
+            a.engineSessionId == _engineSessionId)
+        .toList()
       ..sort((a, b) => a.rank.compareTo(b.rank));
 
     final totalCandidateVisits = rawArrows.fold<int>(0, (sum, a) => sum + (a.visits ?? 0));
-    final effectiveTotalNodes = math.max(_currentNodes, totalCandidateVisits);
+    final effectiveTotalNodes = math.max(_currentNodes ?? 0, totalCandidateVisits);
 
     final resolvedArrows = <CandidateArrow>[];
     final Map<Square, List<CandidateArrow>> byFrom = {};
@@ -927,8 +1004,9 @@ class UciEngineService {
       final bool staleReq = a.requestId != _analysisRequestId;
       final bool missingRev = a.positionRevision <= 0;
       final bool staleRev = a.positionRevision != _positionRevision;
+      final bool staleSession = a.engineSessionId != _engineSessionId;
 
-      final bool revPassed = !missingReq && !staleReq && !missingRev && !staleRev;
+      final bool revPassed = !missingReq && !staleReq && !missingRev && !staleRev && !staleSession;
       if (!isFiltered && revPassed) {
         passedRevisionCount++;
         if (isLegal) {
@@ -947,6 +1025,8 @@ class UciEngineService {
         reason = 'missingRevision';
       } else if (staleRev) {
         reason = 'staleRevision';
+      } else if (staleSession) {
+        reason = 'staleSessionId';
       } else if (!coordsValid) {
         reason = 'invalidCoordinates';
       } else if (!isLegal) {
@@ -1000,7 +1080,7 @@ class UciEngineService {
       currmovenumber: _currentCurrmovenumber,
       currentFen: _currentFen,
       cpuUtilization: '${_requestedThreads}t',
-      visits: _currentNodes,
+      visits: _currentNodes ?? 0,
       wdl: sortedLines.isNotEmpty ? sortedLines.first.wdl : null,
       topPv: sortedLines.isNotEmpty ? sortedLines.first.movesUci.take(6).join(' ') : null,
       positionRevision: _positionRevision,
@@ -1021,13 +1101,19 @@ class UciEngineService {
       fen: _currentFen,
       positionRevision: _positionRevision,
       analysisRequestId: _analysisRequestId,
+      engineSessionId: _engineSessionId,
       totalNodes: _currentNodes,
       nodesPerSecond: _currentNps,
       depth: _currentDepth,
+      seldepth: _currentSeldepth,
+      timeMs: _currentTimeMs,
       pvLines: sortedLines,
       candidateArrows: filteredArrows,
       isAnalyzing: _isAnalyzing && isEngineEnabled,
-      engineName: _settings.activeEngine.displayName,
+      engineName: effectiveEngineDisplayName,
+      searchState: _searchState,
+      isMaia: _settings.isMaiaActive,
+      maiaElo: currentMaiaElo,
       diagnostics: diag,
     );
 
@@ -1072,6 +1158,7 @@ class UciEngineService {
       isEngineEnabled: isEngineEnabled,
     );
 
+    _isAnalysisPaused = false;
     // Clear caches for new position
     _pvsReceivedCount = 0;
     _currentLines.clear();
@@ -1079,11 +1166,11 @@ class UciEngineService {
     _positionPolicyCache.clear();
     _positionVisitsCache.clear();
     _positionMlhCache.clear();
-    _currentNodes = 0;
-    _currentNps = 0;
-    _currentDepth = 0;
-    _currentSeldepth = 0;
-    _currentTimeMs = 0;
+    _currentNodes = null;
+    _currentNps = null;
+    _currentDepth = null;
+    _currentSeldepth = null;
+    _currentTimeMs = null;
     _currentHashfull = 0;
     _currentTbhits = 0;
     _lastBestmove = null;
@@ -1149,7 +1236,7 @@ class UciEngineService {
     _searchState = EngineSearchState.searching;
     _isAnalyzing = true;
 
-    _setLifecycle(EngineLifecycleState.analyzing, 'Analyzing with ${_settings.activeEngine.displayName} (Req #$_analysisRequestId)');
+    _setLifecycle(EngineLifecycleState.ready, 'Analyzing with ${_settings.activeEngine.displayName} (Req #$_analysisRequestId)');
     _sendCommand('position fen $_currentFen');
 
     final effectiveNodeLimit = _effectiveNodeLimit;
@@ -1169,7 +1256,68 @@ class UciEngineService {
     );
   }
 
+  /// Decoupled pause for user search control (e.g. from UI play/pause button).
+  /// Halts UCI computation, sets searchState to AnalysisDataState.paused,
+  /// but keeps candidate arrows, lines, and eval strictly intact.
+  void pauseAnalysis() {
+    if (!isEngineEnabled) return;
+    _isAnalysisPaused = true;
+    _isAnalyzing = false;
+    _pendingSearchFen = null;
+    _pendingRequestId = null;
+
+    if (_engineProcess != null && _searchState == AnalysisDataState.searching) {
+      _searchState = AnalysisDataState.stopping;
+      _sendCommand('stop');
+      EngineTraceLogger.instance.log(
+        requestId: _analysisRequestId,
+        activeFen: _activeSearchFen ?? _currentFen,
+        engineState: _searchState,
+        activationState: _activationState,
+        rawUciLine: 'stop',
+        action: 'PAUSE_ANALYSIS',
+      );
+    } else {
+      _searchState = AnalysisDataState.paused;
+    }
+
+    _setLifecycle(EngineLifecycleState.ready, 'Analysis paused');
+    _emitThrottledAnalysis(force: true);
+  }
+
+  /// Resumes search on the active position without clearing candidate arrows,
+  /// PV lines, or evaluation state.
+  void resumeAnalysis() {
+    if (!isEngineEnabled) return;
+    _isAnalysisPaused = false;
+    _isAnalyzing = true;
+    _analysisRequestId++;
+
+    if (_engineProcess == null || !isProcessAlive) {
+      _setLifecycle(EngineLifecycleState.error, '${_settings.activeEngine.displayName} process not running');
+      return;
+    }
+
+    // Map existing lines and candidate arrows to new analysisRequestId so they stay intact
+    for (final entry in _currentLines.entries.toList()) {
+      _currentLines[entry.key] = entry.value.copyWith(analysisRequestId: _analysisRequestId);
+    }
+    for (final entry in _candidateArrowsMap.entries.toList()) {
+      _candidateArrowsMap[entry.key] = entry.value.copyWith(requestId: _analysisRequestId);
+    }
+
+    _evaluationNotifier.value = _evaluationNotifier.value.copyWith(
+      positionRevision: _positionRevision,
+      analysisRequestId: _analysisRequestId,
+      fen: _currentFen,
+      isEngineEnabled: isEngineEnabled,
+    );
+
+    _startSearchOnEngine();
+  }
+
   void stopAnalysis() {
+    _isAnalysisPaused = false;
     _isAnalyzing = false;
     _pendingSearchFen = null;
     _pendingRequestId = null;
@@ -1185,17 +1333,17 @@ class UciEngineService {
       _searchState = EngineSearchState.idle;
     }
 
-    _setLifecycle(EngineLifecycleState.idle, 'Analysis stopped');
+    _setLifecycle(EngineLifecycleState.ready, 'Analysis stopped');
     _currentLines.clear();
     _candidateArrowsMap.clear();
     _positionPolicyCache.clear();
     _positionVisitsCache.clear();
     _positionMlhCache.clear();
-    _currentNodes = 0;
-    _currentNps = 0;
-    _currentDepth = 0;
-    _currentSeldepth = 0;
-    _currentTimeMs = 0;
+    _currentNodes = null;
+    _currentNps = null;
+    _currentDepth = null;
+    _currentSeldepth = null;
+    _currentTimeMs = null;
     _currentHashfull = 0;
     _currentTbhits = 0;
     _lastBestmove = null;
@@ -1231,7 +1379,7 @@ class UciEngineService {
       );
     }
 
-    _setLifecycle(EngineLifecycleState.idle, 'Analysis paused (backgrounded)');
+    _setLifecycle(EngineLifecycleState.ready, 'Analysis paused (backgrounded)');
   }
 
   /// Resumes search when the app returns to the foreground.
@@ -1239,6 +1387,7 @@ class UciEngineService {
   /// from any pre-background output, while preserving positionRevision and the current FEN.
   void resumeFromBackground() {
     _isPausedForBackground = false;
+    _isAnalysisPaused = false;
     _analysisRequestId++;
 
     if (_engineProcess == null || !isProcessAlive || _activationState != EngineActivationState.enabled) return;

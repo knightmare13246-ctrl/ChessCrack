@@ -120,9 +120,10 @@ class CandidateArrow {
   final double? policyPercentage; // Neural network prior probability P from Lc0
   final double? movesLeft; // Moves left ahead (MLH) from Lc0
 
-  final int depth;
+  final int? depth;
   final int positionRevision;
   final int requestId;
+  final int engineSessionId;
   final String? sourceFen;
 
   final ArrowVisualStyle style;
@@ -145,9 +146,10 @@ class CandidateArrow {
     this.nodePercentage,
     this.policyPercentage,
     this.movesLeft,
-    this.depth = 0,
+    this.depth,
     required this.positionRevision,
     required this.requestId,
+    this.engineSessionId = 0,
     this.sourceFen,
     required this.style,
   });
@@ -233,6 +235,7 @@ class CandidateArrow {
     int? depth,
     int? positionRevision,
     int? requestId,
+    int? engineSessionId,
     String? sourceFen,
     ArrowVisualStyle? style,
   }) {
@@ -257,6 +260,7 @@ class CandidateArrow {
       depth: depth ?? this.depth,
       positionRevision: positionRevision ?? this.positionRevision,
       requestId: requestId ?? this.requestId,
+      engineSessionId: engineSessionId ?? this.engineSessionId,
       sourceFen: sourceFen ?? this.sourceFen,
       style: style ?? this.style,
     );

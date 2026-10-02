@@ -491,6 +491,19 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
     }
   }
 
+  void _toggleAnalysisPause() {
+    if (!_isLiveAnalysisActive) {
+      _toggleLiveAnalysis();
+      return;
+    }
+    if (_engineService.searchState == AnalysisDataState.searching) {
+      _engineService.pauseAnalysis();
+    } else {
+      _engineService.resumeAnalysis();
+    }
+    setState(() {});
+  }
+
   void _flipBoard() {
     setState(() => _isFlipped = !_isFlipped);
     _saveSessionState();
@@ -729,8 +742,8 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
                                   children: [
                                     EngineAnalysisPanel(
                                       analysis: _currentAnalysis,
-                                      isAnalyzing: _isLiveAnalysisActive && _engineService.isAnalyzing,
-                                      onToggleAnalysis: _toggleLiveAnalysis,
+                                      isAnalyzing: _isLiveAnalysisActive && _engineService.searchState == AnalysisDataState.searching,
+                                      onToggleAnalysis: _toggleAnalysisPause,
                                       onPlayMove: _onMovePlayed,
                                       currentPosition: currentPos,
                                       settings: _engineSettings,
@@ -851,8 +864,8 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
                     children: [
                       EngineAnalysisPanel(
                         analysis: _currentAnalysis,
-                        isAnalyzing: _isLiveAnalysisActive && _engineService.isAnalyzing,
-                        onToggleAnalysis: _toggleLiveAnalysis,
+                        isAnalyzing: _isLiveAnalysisActive && _engineService.searchState == AnalysisDataState.searching,
+                        onToggleAnalysis: _toggleAnalysisPause,
                         onPlayMove: _onMovePlayed,
                         currentPosition: currentPos,
                         settings: _engineSettings,

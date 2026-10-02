@@ -2,8 +2,11 @@ import 'candidate_arrow.dart';
 import 'chess_move.dart';
 import '../utils/san_formatter.dart';
 import '../utils/score_adapters.dart';
-export '../services/engine_trace_logger.dart' show EngineSearchState, EngineActivationState;
+import '../services/engine_trace_logger.dart';
+
+export '../services/engine_trace_logger.dart' show AnalysisDataState, EngineSearchState, EngineActivationState;
 export 'candidate_arrow.dart';
+export 'engine_download_model.dart' show EngineInstallationState;
 export 'normalized_evaluation.dart' show NormalizedEvaluation, MateState;
 export '../utils/san_formatter.dart' show PvMoveItem, SANFormatter;
 
@@ -17,12 +20,48 @@ enum EngineType {
 }
 
 enum EngineLifecycleState {
-  idle,
-  starting,
+  uninitialized,
+  initializing,
   ready,
-  analyzing,
-  stopping,
+  disposed,
   error,
+}
+
+class AnalysisGeneration {
+  final int positionRevision;
+  final int analysisRequestId;
+  final int engineSessionId;
+
+  const AnalysisGeneration({
+    required this.positionRevision,
+    required this.analysisRequestId,
+    required this.engineSessionId,
+  });
+
+  bool matches({
+    required int revision,
+    required int requestId,
+    required int sessionId,
+  }) =>
+      positionRevision == revision &&
+      analysisRequestId == requestId &&
+      engineSessionId == sessionId;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AnalysisGeneration &&
+          runtimeType == other.runtimeType &&
+          positionRevision == other.positionRevision &&
+          analysisRequestId == other.analysisRequestId &&
+          engineSessionId == other.engineSessionId;
+
+  @override
+  int get hashCode => Object.hash(positionRevision, analysisRequestId, engineSessionId);
+
+  @override
+  String toString() =>
+      'AnalysisGeneration(rev: $positionRevision, req: $analysisRequestId, sess: $engineSessionId)';
 }
 
 class CandidateArrowDiagnostic {
@@ -69,11 +108,11 @@ class EngineDiagnostics {
   final int requestedMultiPv;
   final bool optionsApplied;
   final bool readyOkReceived;
-  final int totalNodes;
-  final int nps;
-  final int depth;
-  final int seldepth;
-  final int timeMs;
+  final int? totalNodes;
+  final int? nps;
+  final int? depth;
+  final int? seldepth;
+  final int? timeMs;
   final int hashfull;
   final int tbhits;
   final String? bestmove;
@@ -81,7 +120,7 @@ class EngineDiagnostics {
   final int? currmovenumber;
   final String currentFen;
   final String cpuUtilization;
-  final int visits;
+  final int? visits;
   final List<int>? wdl;
   final String? topPv;
   final int positionRevision;
@@ -113,11 +152,11 @@ class EngineDiagnostics {
     this.requestedMultiPv = 3,
     this.optionsApplied = false,
     this.readyOkReceived = false,
-    this.totalNodes = 0,
-    this.nps = 0,
-    this.depth = 0,
-    this.seldepth = 0,
-    this.timeMs = 0,
+    this.totalNodes,
+    this.nps,
+    this.depth,
+    this.seldepth,
+    this.timeMs,
     this.hashfull = 0,
     this.tbhits = 0,
     this.bestmove,
@@ -125,7 +164,7 @@ class EngineDiagnostics {
     this.currmovenumber,
     this.currentFen = '',
     this.cpuUtilization = '',
-    this.visits = 0,
+    this.visits,
     this.wdl,
     this.topPv,
     this.positionRevision = 0,
@@ -242,16 +281,17 @@ class PvLine {
   List<String> movesSan;
   final List<PvMoveItem> pvMoves;
   final String startFen;
-  final int depth;
-  final int seldepth;
-  final int nodes;
-  final int nps;
+  final int? depth;
+  final int? seldepth;
+  final int? nodes;
+  final int? nps;
   final double? visitPercentage;
   final double? policyPercentage;
   final double? utility;
   final double? movesLeft;
   final int positionRevision;
   final int analysisRequestId;
+  final int engineSessionId;
   final MoveEvaluation? evaluation;
   final NormalizedEvaluation? normalizedEvaluation;
 
@@ -268,21 +308,78 @@ class PvLine {
     this.movesSan = const [],
     this.pvMoves = const [],
     this.startFen = '',
-    this.depth = 0,
-    this.seldepth = 0,
-    this.nodes = 0,
-    this.nps = 0,
+    this.depth,
+    this.seldepth,
+    this.nodes,
+    this.nps,
     this.visitPercentage,
     this.policyPercentage,
     this.utility,
     this.movesLeft,
     this.positionRevision = 0,
     this.analysisRequestId = 0,
+    this.engineSessionId = 0,
     this.evaluation,
     NormalizedEvaluation? normalizedEvaluation,
   })  : expectedScore = expectedScore ?? winPercentage,
         whiteExpectedScore = whiteExpectedScore ?? whiteWinPercentage,
         normalizedEvaluation = normalizedEvaluation ?? evaluation?.normalized;
+
+  PvLine copyWith({
+    int? multipv,
+    int? scoreCp,
+    int? scoreMate,
+    double? winPercentage,
+    double? whiteWinPercentage,
+    double? expectedScore,
+    double? whiteExpectedScore,
+    List<int>? wdl,
+    List<String>? movesUci,
+    List<String>? movesSan,
+    List<PvMoveItem>? pvMoves,
+    String? startFen,
+    int? depth,
+    int? seldepth,
+    int? nodes,
+    int? nps,
+    double? visitPercentage,
+    double? policyPercentage,
+    double? utility,
+    double? movesLeft,
+    int? positionRevision,
+    int? analysisRequestId,
+    int? engineSessionId,
+    MoveEvaluation? evaluation,
+    NormalizedEvaluation? normalizedEvaluation,
+  }) {
+    return PvLine(
+      multipv: multipv ?? this.multipv,
+      scoreCp: scoreCp ?? this.scoreCp,
+      scoreMate: scoreMate ?? this.scoreMate,
+      winPercentage: winPercentage ?? this.winPercentage,
+      whiteWinPercentage: whiteWinPercentage ?? this.whiteWinPercentage,
+      expectedScore: expectedScore ?? this.expectedScore,
+      whiteExpectedScore: whiteExpectedScore ?? this.whiteExpectedScore,
+      wdl: wdl ?? this.wdl,
+      movesUci: movesUci ?? this.movesUci,
+      movesSan: movesSan ?? this.movesSan,
+      pvMoves: pvMoves ?? this.pvMoves,
+      startFen: startFen ?? this.startFen,
+      depth: depth ?? this.depth,
+      seldepth: seldepth ?? this.seldepth,
+      nodes: nodes ?? this.nodes,
+      nps: nps ?? this.nps,
+      visitPercentage: visitPercentage ?? this.visitPercentage,
+      policyPercentage: policyPercentage ?? this.policyPercentage,
+      utility: utility ?? this.utility,
+      movesLeft: movesLeft ?? this.movesLeft,
+      positionRevision: positionRevision ?? this.positionRevision,
+      analysisRequestId: analysisRequestId ?? this.analysisRequestId,
+      engineSessionId: engineSessionId ?? this.engineSessionId,
+      evaluation: evaluation ?? this.evaluation,
+      normalizedEvaluation: normalizedEvaluation ?? this.normalizedEvaluation,
+    );
+  }
 
   String? get primaryMoveUci => movesUci.isNotEmpty ? movesUci.first : null;
   String? get primaryMoveSan => movesSan.isNotEmpty ? movesSan.first : (pvMoves.isNotEmpty ? pvMoves.first.san : null);
@@ -332,9 +429,9 @@ class PvLine {
       parts.add('U: ${utility!.toStringAsFixed(3)}');
     }
     if (parts.isEmpty) {
-      if (depth > 0) parts.add('d: $depth');
-      if (nodes > 0) parts.add('nodes: $nodes');
-      if (nps > 0) parts.add('${(nps / 1000).toStringAsFixed(0)}k nps');
+      if (depth != null && depth! > 0) parts.add('d: $depth');
+      if (nodes != null && nodes! > 0) parts.add('nodes: $nodes');
+      if (nps != null && nps! > 0) parts.add('${(nps! / 1000).toStringAsFixed(0)}k nps');
     }
     return '(${parts.join(', ')})';
   }
@@ -344,9 +441,15 @@ class PositionAnalysis {
   final String fen;
   final int positionRevision;
   final int analysisRequestId;
-  final int totalNodes;
-  final int nodesPerSecond;
-  final int depth;
+  final int engineSessionId;
+  final int? totalNodes;
+  final int? nodesPerSecond;
+  final int? depth;
+  final int? seldepth;
+  final int? timeMs;
+  final AnalysisDataState searchState;
+  final bool isMaia;
+  final int? maiaElo;
   final List<PvLine> pvLines;
   final List<CandidateArrow> candidateArrows;
   final bool isAnalyzing;
@@ -357,9 +460,15 @@ class PositionAnalysis {
     required this.fen,
     this.positionRevision = 0,
     this.analysisRequestId = 0,
-    this.totalNodes = 0,
-    this.nodesPerSecond = 0,
-    this.depth = 0,
+    this.engineSessionId = 0,
+    this.totalNodes,
+    this.nodesPerSecond,
+    this.depth,
+    this.seldepth,
+    this.timeMs,
+    this.searchState = AnalysisDataState.idle,
+    this.isMaia = false,
+    this.maiaElo,
     this.pvLines = const [],
     this.candidateArrows = const [],
     this.isAnalyzing = false,
@@ -386,17 +495,22 @@ class PositionAnalysis {
   double get whiteWinPercentage => normalizedEvaluation.whiteExpectedScore;
 
   String get formattedHeader {
-    final bool isMaia = (engineName?.toLowerCase().contains('maia') == true);
-    if (isMaia) {
-      final status = isAnalyzing ? 'Evaluating Human Moves...' : 'Evaluation Complete (1-ply Policy)';
+    final bool effectiveIsMaia = isMaia || (engineName?.toLowerCase().contains('maia') == true);
+    if (effectiveIsMaia) {
+      if (searchState == AnalysisDataState.paused) {
+        return 'Paused · $engineName · Evaluation Paused';
+      }
+      final status = (isAnalyzing || searchState == AnalysisDataState.searching)
+          ? 'Evaluating Human Moves...'
+          : 'Evaluation Complete (1-ply Policy)';
       return '$engineName · $status';
     }
 
-    final formattedNodes = _formatNumber(totalNodes);
+    final formattedNodes = totalNodes != null ? _formatNumber(totalNodes!) : '—';
     final String npsText;
-    if (isAnalyzing) {
-      if (nodesPerSecond > 0) {
-        npsText = 'N/s: ${_formatNumber(nodesPerSecond)}';
+    if (isAnalyzing || searchState == AnalysisDataState.searching) {
+      if (nodesPerSecond != null && nodesPerSecond! > 0) {
+        npsText = 'N/s: ${_formatNumber(nodesPerSecond!)}';
       } else {
         npsText = (engineName?.toLowerCase().contains('leela') == true ||
                 engineName?.toLowerCase().contains('lc0') == true)
@@ -407,8 +521,12 @@ class PositionAnalysis {
       npsText = 'N/s: —';
     }
 
-    final depthText = depth > 0 ? ', Depth: $depth' : '';
-    final statusPrefix = !isAnalyzing ? 'Paused · ' : '';
+    final depthText = (depth != null && depth! > 0)
+        ? (seldepth != null && seldepth! > depth! ? ', Depth: $depth/$seldepth' : ', Depth: $depth')
+        : '';
+    final statusPrefix = (!isAnalyzing && searchState != AnalysisDataState.completed) || searchState == AnalysisDataState.paused
+        ? 'Paused · '
+        : '';
     return '${statusPrefix}Nodes: $formattedNodes, $npsText$depthText';
   }
 
@@ -426,4 +544,12 @@ class PositionAnalysis {
     }
     return buffer.toString().split('').reversed.join('');
   }
+}
+
+extension NullableIntOperators on int? {
+  bool operator >(num other) => this != null && this! > other;
+  bool operator <(num other) => this != null && this! < other;
+  bool operator >=(num other) => this != null && this! >= other;
+  bool operator <=(num other) => this != null && this! <= other;
+  num operator /(num other) => (this != null) ? this! / other : 0;
 }

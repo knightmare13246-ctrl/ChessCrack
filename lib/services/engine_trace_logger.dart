@@ -1,11 +1,14 @@
 import 'dart:collection';
 
-enum EngineSearchState {
+enum AnalysisDataState {
   idle,
-  ready,
   searching,
+  paused,
+  completed,
   stopping,
 }
+
+typedef EngineSearchState = AnalysisDataState;
 
 enum EngineActivationState {
   disabled, // Engine is OFF, no search, no background CPU
