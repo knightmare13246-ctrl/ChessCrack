@@ -530,6 +530,45 @@ class PositionAnalysis {
     return '${statusPrefix}Nodes: $formattedNodes, $npsText$depthText';
   }
 
+  String get compactNodes {
+    if (totalNodes == null) return '—';
+    if (totalNodes! < 1000) return '$totalNodes';
+    if (totalNodes! < 1000000) {
+      final k = totalNodes! / 1000.0;
+      return k >= 100 ? '${k.toStringAsFixed(0)}k' : '${k.toStringAsFixed(1)}k';
+    }
+    final m = totalNodes! / 1000000.0;
+    return '${m.toStringAsFixed(2)}M';
+  }
+
+  String get compactNps {
+    final bool isLc0 = (engineName?.toLowerCase().contains('leela') == true ||
+        engineName?.toLowerCase().contains('lc0') == true);
+    if (nodesPerSecond != null && nodesPerSecond! > 0) {
+      if (nodesPerSecond! < 1000) return '$nodesPerSecond';
+      if (nodesPerSecond! < 1000000) {
+        final k = nodesPerSecond! / 1000.0;
+        return k >= 100 ? '${k.toStringAsFixed(0)}k' : '${k.toStringAsFixed(1)}k';
+      }
+      final m = nodesPerSecond! / 1000000.0;
+      return '${m.toStringAsFixed(2)}M';
+    }
+    if (isLc0 || isMaia) return 'N/A';
+    return '—';
+  }
+
+  String get formattedDepth {
+    if (depth == null || depth! <= 0) return '—';
+    if (seldepth != null && seldepth! > depth!) return '$depth/$seldepth';
+    return '$depth';
+  }
+
+  String get formattedTime {
+    if (timeMs == null || timeMs! <= 0) return '—';
+    if (timeMs! < 1000) return '${timeMs}ms';
+    return '${(timeMs! / 1000).toStringAsFixed(1)}s';
+  }
+
   static String _formatNumber(int n) {
     if (n < 1000) return '$n';
     final str = n.toString();

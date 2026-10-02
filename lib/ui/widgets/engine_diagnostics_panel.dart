@@ -31,6 +31,13 @@ class EngineDiagnosticsPanel extends StatelessWidget {
         ? 'W: ${(d.wdl![0] / 10).toStringAsFixed(1)}% | D: ${(d.wdl![1] / 10).toStringAsFixed(1)}% | L: ${(d.wdl![2] / 10).toStringAsFixed(1)}%'
         : 'N/A';
 
+    final bool isMaia = d.engineName.toLowerCase().contains('maia');
+    final bool isLc0 = isMaia || d.engineName.toLowerCase().contains('lc0') || d.engineName.toLowerCase().contains('leela');
+    final String nodesDisplay = d.totalNodes != null ? '${d.totalNodes}' : (isMaia ? '1' : '—');
+    final String npsDisplay = d.nps != null && d.nps! > 0
+        ? '${d.nps}'
+        : (isLc0 ? 'N/A' : '—');
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: const BoxDecoration(
@@ -57,7 +64,7 @@ class EngineDiagnosticsPanel extends StatelessWidget {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    'CHESSCRACK • ${d.engineName.toUpperCase()}',
+                    isMaia ? 'CHESSCRACK • LC0 (MAIA SPARRING)' : 'CHESSCRACK • ${d.engineName.toUpperCase()}',
                     style: const TextStyle(
                       color: Color(0xFF1B78D0),
                       fontSize: 11,
@@ -83,11 +90,13 @@ class EngineDiagnosticsPanel extends StatelessWidget {
               spacing: 6,
               runSpacing: 4,
               children: [
+                _buildMetricChip('Engine', isMaia ? 'Lc0' : d.engineName),
+                if (isMaia) _buildMetricChip('Network', d.engineName, highlight: true),
                 _buildMetricChip('Processes', '${d.activeProcessCount}', highlight: d.activeProcessCount == 1),
                 _buildMetricChip('Backend', d.backend),
                 _buildMetricChip('Device', d.device),
-                _buildMetricChip('Nodes', '${d.totalNodes}'),
-                _buildMetricChip('NPS', '${d.nps}'),
+                _buildMetricChip('Nodes', nodesDisplay),
+                _buildMetricChip('NPS', npsDisplay),
                 _buildMetricChip('MultiPV', '${d.multiPv}'),
                 _buildMetricChip('Threads', '${d.threads} (${d.optionsApplied ? "applied" : "pending"})'),
               ],

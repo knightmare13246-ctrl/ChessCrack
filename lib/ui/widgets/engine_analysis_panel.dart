@@ -62,6 +62,13 @@ class EngineAnalysisPanel extends StatelessWidget {
           'wdl',
         };
 
+    final isMaiaActive = (settings?.isMaiaActive == true) || (analysis?.isMaia == true);
+
+    final engineDisplayName = isMaiaActive
+        ? (settings?.selectedMaiaId != null ? 'MAIA ${settings!.selectedMaiaId!.replaceAll(RegExp(r'[^0-9]'), '')}' : (analysis?.engineName?.toUpperCase() ?? 'MAIA'))
+        : (settings?.activeEngine.displayName.toUpperCase() ?? (analysis?.engineName?.toUpperCase() ?? 'ENGINE'));
+    final engineSubtitle = isMaiaActive ? 'Engine: Lc0' : '';
+
     final headerText = analysis != null && (lines.isNotEmpty || analysis!.totalNodes != null || analysis!.depth != null || analysis!.isMaia)
         ? analysis!.formattedHeader
         : (isAnalyzing ? 'Analyzing position...' : 'Tap Analyze to start engine evaluation');
@@ -72,30 +79,87 @@ class EngineAnalysisPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Engine header bar
+          // 1. Engine Header Bar: Engine Identity, Status & Pause/Analyze toggle
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              // Engine title + Live pulse dot + Tag
               Expanded(
-                child: Text(
-                  headerText,
-                  style: const TextStyle(
-                    color: Color(0xFF888888),
-                    fontFamily: 'monospace',
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isAnalyzing
+                            ? const Color(0xFF00D2BE)
+                            : (analysis?.searchState == AnalysisDataState.paused
+                                ? const Color(0xFFFFB300)
+                                : Colors.white24),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      engineDisplayName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                    if (engineSubtitle.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E2832),
+                          borderRadius: BorderRadius.circular(3),
+                          border: Border.all(color: const Color(0xFF005FB8), width: 0.6),
+                        ),
+                        child: Text(
+                          engineSubtitle,
+                          style: const TextStyle(
+                            color: Color(0xFF80D4FF),
+                            fontSize: 9.5,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (analysis?.searchState == AnalysisDataState.paused) ...[
+                      const SizedBox(width: 6),
+                      const Text(
+                        'PAUSED',
+                        style: TextStyle(
+                          color: Color(0xFFFFB300),
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const SizedBox(width: 8),
+              // Pause / Analyze toggle button
               GestureDetector(
                 onTap: onToggleAnalysis,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
                   decoration: BoxDecoration(
                     color: isAnalyzing ? const Color(0xFF2E7D32) : const Color(0xFF333333),
                     borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: isAnalyzing ? const Color(0xFF4CAF50) : const Color(0xFF555555),
+                      width: 1,
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -119,6 +183,31 @@ class EngineAnalysisPanel extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+
+          const SizedBox(height: 5),
+
+          // 2. Real Telemetry Bar (Never truncated with ellipsis, auto-fits width)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
+            decoration: BoxDecoration(
+              color: const Color(0xFF161616),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: const Color(0xFF242424), width: 0.8),
+            ),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                headerText,
+                style: const TextStyle(
+                  color: Color(0xFFCCCCCC),
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
           ),
 
           // WDL diagnostics row
@@ -188,20 +277,22 @@ class EngineAnalysisPanel extends StatelessWidget {
     );
   }
 
+
   Widget _buildDraftToolbar(BuildContext context, DraftVariation draft) {
     final currentIdx = draft.selectedMoveIndex;
     final totalMoves = draft.totalMoves;
     final stepText = currentIdx < 0 ? 'Start' : '${currentIdx + 1}/$totalMoves';
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
         color: const Color(0xFF132230),
         borderRadius: BorderRadius.circular(4),
         border: Border.all(color: const Color(0xFF005FB8), width: 1),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -216,7 +307,7 @@ class EngineAnalysisPanel extends StatelessWidget {
                 fontFamily: 'monospace',
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             // [⏮ Start]
             IconButton(
               icon: const Icon(Icons.first_page, size: 17),
@@ -225,7 +316,7 @@ class EngineAnalysisPanel extends StatelessWidget {
               tooltip: 'Start of Variation',
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+              constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
             ),
             // [◀ Prev]
             IconButton(
@@ -235,7 +326,7 @@ class EngineAnalysisPanel extends StatelessWidget {
               tooltip: 'Previous Move',
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+              constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
             ),
             // [▶ Play / ⏸ Pause]
             IconButton(
@@ -248,7 +339,7 @@ class EngineAnalysisPanel extends StatelessWidget {
               tooltip: draft.isAutoPlaying ? 'Pause Auto-play' : 'Auto-play Variation',
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+              constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
             ),
             // [▶ Next]
             IconButton(
@@ -258,7 +349,7 @@ class EngineAnalysisPanel extends StatelessWidget {
               tooltip: 'Next Move',
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+              constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
             ),
             // [⏭ End]
             IconButton(
@@ -268,31 +359,47 @@ class EngineAnalysisPanel extends StatelessWidget {
               tooltip: 'End of Variation',
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+              constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+            ),
+            const SizedBox(width: 6),
+            // [➕ Add to Game]
+            GestureDetector(
+              onTap: onCommitDraftVariation,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF005FB8),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.add_circle_outline, size: 12, color: Colors.white),
+                    SizedBox(width: 3),
+                    Text(
+                      'Add',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(width: 4),
-            // [➕ Add to Game]
-            ElevatedButton.icon(
-              icon: const Icon(Icons.add_circle_outline, size: 12),
-              label: const Text('Add'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF005FB8),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                visualDensity: VisualDensity.compact,
-                textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
-              ),
-              onPressed: onCommitDraftVariation,
-            ),
-            const SizedBox(width: 2),
             // [✖ Exit]
-            IconButton(
-              icon: const Icon(Icons.close, size: 16, color: Colors.white70),
-              onPressed: onExitDraftVariation,
-              tooltip: 'Exit Variation',
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+            GestureDetector(
+              onTap: onExitDraftVariation,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.white10,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Icon(Icons.close, size: 14, color: Colors.white70),
+              ),
             ),
           ],
         ),

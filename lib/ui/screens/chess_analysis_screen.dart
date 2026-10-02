@@ -1048,122 +1048,27 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
               ),
             ),
           ),
-          if (isNarrow) ...[
-            IconButton(
-              icon: const Icon(Icons.paste, color: Color(0xFF00D2BE), size: 19),
-              onPressed: _openPgnPasteDialog,
-              tooltip: 'Paste PGN',
-              visualDensity: VisualDensity.compact,
-            ),
-            IconButton(
-              icon: const Icon(Icons.swap_vert, color: Colors.white70, size: 20),
-              onPressed: _flipBoard,
-              tooltip: 'Flip Board',
-              visualDensity: VisualDensity.compact,
-            ),
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert, color: Colors.white70, size: 20),
-              color: const Color(0xFF222222),
-              onSelected: (value) {
-                switch (value) {
-                  case 'engine_manager':
-                    _openEngineManagerDialog();
-                    break;
-                  case 'arrows':
-                    _openArrowSettingsDialog();
-                    break;
-                  case 'engine':
-                    _openEngineSettingsDialog();
-                    break;
-                  case 'theme':
-                    _openThemeSettingsDialog();
-                    break;
-                  case 'return':
-                    _returnToOriginalGame();
-                    break;
-                  case 'about':
-                    _openAboutDialog();
-                    break;
-                }
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(
-                  value: 'engine_manager',
-                  child: Row(
-                    children: [
-                      Icon(Icons.download_for_offline, color: Color(0xFF00D2BE), size: 18),
-                      SizedBox(width: 8),
-                      Text('Engine & Maia Manager', style: TextStyle(color: Colors.white, fontSize: 13)),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'arrows',
-                  child: Row(
-                    children: [
-                      Icon(Icons.north_east, color: Color(0xFF00D2BE), size: 18),
-                      SizedBox(width: 8),
-                      Text('Arrow Settings', style: TextStyle(color: Colors.white, fontSize: 13)),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'engine',
-                  child: Row(
-                    children: [
-                      Icon(Icons.tune, color: Colors.white70, size: 18),
-                      SizedBox(width: 8),
-                      Text('Engine Settings', style: TextStyle(color: Colors.white, fontSize: 13)),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'theme',
-                  child: Row(
-                    children: [
-                      Icon(Icons.palette_outlined, color: Colors.white70, size: 18),
-                      SizedBox(width: 8),
-                      Text('Board & Appearance', style: TextStyle(color: Colors.white, fontSize: 13)),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'return',
-                  child: Row(
-                    children: [
-                      Icon(Icons.replay, color: Colors.white70, size: 18),
-                      SizedBox(width: 8),
-                      Text('Return to Mainline', style: TextStyle(color: Colors.white, fontSize: 13)),
-                    ],
-                  ),
-                ),
-                PopupMenuDivider(height: 8),
-                PopupMenuItem(
-                  value: 'about',
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, color: Color(0xFF00D2BE), size: 18),
-                      SizedBox(width: 8),
-                      Text('About & Licenses', style: TextStyle(color: Colors.white, fontSize: 13)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ] else ...[
-            const Spacer(),
-            IconButton(
-              icon: const Icon(Icons.download_for_offline, color: Color(0xFF00D2BE), size: 19),
-              onPressed: _openEngineManagerDialog,
-              tooltip: 'Engine & Maia Manager',
-              visualDensity: VisualDensity.compact,
-            ),
-            IconButton(
-              icon: const Icon(Icons.paste, color: Color(0xFF00D2BE), size: 19),
-              onPressed: _openPgnPasteDialog,
-              tooltip: 'Paste PGN',
-              visualDensity: VisualDensity.compact,
-            ),
+          const Spacer(),
+          // Core primary actions (always in identical order across portrait & landscape)
+          IconButton(
+            icon: const Icon(Icons.download_for_offline, color: Color(0xFF00D2BE), size: 19),
+            onPressed: _openEngineManagerDialog,
+            tooltip: 'Engine & Maia Manager',
+            visualDensity: VisualDensity.compact,
+          ),
+          IconButton(
+            icon: const Icon(Icons.paste, color: Color(0xFF00D2BE), size: 19),
+            onPressed: _openPgnPasteDialog,
+            tooltip: 'Paste PGN',
+            visualDensity: VisualDensity.compact,
+          ),
+          IconButton(
+            icon: const Icon(Icons.swap_vert, color: Colors.white70, size: 20),
+            onPressed: _flipBoard,
+            tooltip: 'Flip Board',
+            visualDensity: VisualDensity.compact,
+          ),
+          if (!isNarrow) ...[
             IconButton(
               icon: const Icon(Icons.tune, color: Colors.white70, size: 19),
               onPressed: _openEngineSettingsDialog,
@@ -1182,19 +1087,88 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
               tooltip: 'Board & Appearance',
               visualDensity: VisualDensity.compact,
             ),
-            IconButton(
-              icon: const Icon(Icons.swap_vert, color: Colors.white70, size: 20),
-              onPressed: _flipBoard,
-              tooltip: 'Flip Board',
-              visualDensity: VisualDensity.compact,
-            ),
-            IconButton(
-              icon: const Icon(Icons.info_outline, color: Color(0xFF00D2BE), size: 19),
-              onPressed: _openAboutDialog,
-              tooltip: 'About & Licenses',
-              visualDensity: VisualDensity.compact,
-            ),
           ],
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.white70, size: 20),
+            color: const Color(0xFF222222),
+            onSelected: (value) {
+              switch (value) {
+                case 'engine_manager':
+                  _openEngineManagerDialog();
+                  break;
+                case 'arrows':
+                  _openArrowSettingsDialog();
+                  break;
+                case 'engine':
+                  _openEngineSettingsDialog();
+                  break;
+                case 'theme':
+                  _openThemeSettingsDialog();
+                  break;
+                case 'return':
+                  _returnToOriginalGame();
+                  break;
+                case 'about':
+                  _openAboutDialog();
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              if (isNarrow) ...[
+                const PopupMenuItem(
+                  value: 'engine',
+                  child: Row(
+                    children: [
+                      Icon(Icons.tune, color: Colors.white70, size: 18),
+                      SizedBox(width: 8),
+                      Text('Engine Settings', style: TextStyle(color: Colors.white, fontSize: 13)),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'arrows',
+                  child: Row(
+                    children: [
+                      Icon(Icons.north_east, color: Color(0xFF00D2BE), size: 18),
+                      SizedBox(width: 8),
+                      Text('Arrow Settings', style: TextStyle(color: Colors.white, fontSize: 13)),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'theme',
+                  child: Row(
+                    children: [
+                      Icon(Icons.palette_outlined, color: Colors.white70, size: 18),
+                      SizedBox(width: 8),
+                      Text('Board & Appearance', style: TextStyle(color: Colors.white, fontSize: 13)),
+                    ],
+                  ),
+                ),
+              ],
+              const PopupMenuItem(
+                value: 'return',
+                child: Row(
+                  children: [
+                    Icon(Icons.replay, color: Colors.white70, size: 18),
+                    SizedBox(width: 8),
+                    Text('Return to Mainline', style: TextStyle(color: Colors.white, fontSize: 13)),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(height: 8),
+              const PopupMenuItem(
+                value: 'about',
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Color(0xFF00D2BE), size: 18),
+                    SizedBox(width: 8),
+                    Text('About & Licenses', style: TextStyle(color: Colors.white, fontSize: 13)),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
