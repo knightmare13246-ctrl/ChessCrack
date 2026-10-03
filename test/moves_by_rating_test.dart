@@ -1,10 +1,14 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nibbler_chess/models/chess_move.dart';
+import 'package:nibbler_chess/models/chess_position.dart';
+import 'package:nibbler_chess/models/engine_analysis.dart';
 import 'package:nibbler_chess/models/maia_dual_analysis.dart';
 import 'package:nibbler_chess/services/engine_download_service.dart';
 import 'package:nibbler_chess/services/maia3_model_paths.dart';
 import 'package:nibbler_chess/services/maia_rating_engine.dart';
+import 'package:nibbler_chess/ui/widgets/maia_stockfish_comparison_section.dart';
 import 'package:nibbler_chess/ui/widgets/moves_by_rating_chart.dart';
 
 void main() {
@@ -374,6 +378,149 @@ void main() {
       expect(dataset.curves[0].sanMove, equals('e4'));
       expect(dataset.curves[1].sanMove, equals('d4'));
       expect(dataset.snapshot, equals(snapshot));
+    });
+
+    test('MovesByRatingDataset.palette defines distinct non-overlapping colors', () {
+      const palette = MovesByRatingDataset.palette;
+      expect(palette.length, greaterThanOrEqualTo(6));
+      final colorValues = palette.map((c) => c.toARGB32()).toSet();
+      // Every color in the palette must be unique
+      expect(colorValues.length, equals(palette.length));
+    });
+
+    testWidgets('MaiaStockfishComparisonSection renders human and engine candidate columns', (WidgetTester tester) async {
+      const dataset = MovesByRatingDataset(
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        positionRevision: 1,
+        supportedRatings: [1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900],
+        curves: [
+          MoveRatingCurve(
+            uciMove: 'e2e4',
+            sanMove: 'e4',
+            curveColor: Color(0xFF4CAF50),
+            points: [MoveRatingPoint(rating: 1200, probability: 65.1)],
+          ),
+          MoveRatingCurve(
+            uciMove: 'd2d4',
+            sanMove: 'd4',
+            curveColor: Color(0xFFFFA726),
+            points: [MoveRatingPoint(rating: 1200, probability: 22.5)],
+          ),
+        ],
+        activeRating: 1200,
+      );
+
+      final analysis = PositionAnalysis(
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        engineName: 'Stockfish 19',
+        depth: 18,
+        pvLines: [
+          PvLine(
+            multipv: 1,
+            scoreCp: 27,
+            winPercentage: 54.0,
+            whiteWinPercentage: 54.0,
+            depth: 18,
+            nodes: 50000,
+            nps: 1500000,
+            movesUci: ['g1f3', 'd7d5'],
+            pvMoves: [
+              PvMoveItem(
+                index: 0,
+                uci: 'g1f3',
+                move: ChessMove(
+                  from: Square.fromAlgebraic('g1'),
+                  to: Square.fromAlgebraic('f3'),
+                  piece: const ChessPiece(PieceType.knight, PieceColor.white),
+                ),
+                san: 'Nf3',
+                figurineSan: 'Nf3',
+                color: PieceColor.white,
+                moveNumber: 1,
+                positionBefore: ChessPosition.initial(),
+                positionAfter: ChessPosition.initial(),
+              ),
+            ],
+          ),
+          PvLine(
+            multipv: 2,
+            scoreCp: 25,
+            winPercentage: 53.0,
+            whiteWinPercentage: 53.0,
+            depth: 18,
+            nodes: 50000,
+            nps: 1500000,
+            movesUci: ['d2d4', 'd7d5'],
+            pvMoves: [
+              PvMoveItem(
+                index: 0,
+                uci: 'd2d4',
+                move: ChessMove(
+                  from: Square.fromAlgebraic('d2'),
+                  to: Square.fromAlgebraic('d4'),
+                  piece: const ChessPiece(PieceType.pawn, PieceColor.white),
+                ),
+                san: 'd4',
+                figurineSan: 'd4',
+                color: PieceColor.white,
+                moveNumber: 1,
+                positionBefore: ChessPosition.initial(),
+                positionAfter: ChessPosition.initial(),
+              ),
+            ],
+          ),
+        ],
+      );
+
+      int? selectedRating;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: MaiaStockfishComparisonSection(
+                analysis: analysis,
+                movesByRatingData: dataset,
+                activeRating: 1200,
+                onRatingChanged: (r) => selectedRating = r,
+                currentPosition: ChessPosition.initial(),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Verify Analysis section header & hide button
+      expect(find.text('Analysis'), findsOneWidget);
+      expect(find.text('Hide'), findsOneWidget);
+
+      // Verify Maia human column header & candidate moves with %
+      expect(find.text('Maia 1200: Human Moves'), findsOneWidget);
+      expect(find.text('65.1%'), findsOneWidget);
+      expect(find.text('22.5%'), findsOneWidget);
+
+      // Verify Stockfish engine column header & candidate moves with eval
+      expect(find.text('Stockfish 19: Engine Moves'), findsOneWidget);
+      expect(find.text('d18'), findsOneWidget);
+      expect(find.text('+0.27'), findsOneWidget);
+      expect(find.text('+0.25'), findsOneWidget);
+
+      // Test hide toggle
+      await tester.tap(find.text('Hide'));
+      await tester.pump();
+      expect(find.text('Show'), findsOneWidget);
+      // Test show toggle
+      await tester.tap(find.text('Show'));
+      await tester.pump();
+      expect(find.text('Hide'), findsOneWidget);
+      expect(find.text('Maia 1200: Human Moves'), findsOneWidget);
+
+      // Test rating dropdown selection
+      await tester.tap(find.byType(PopupMenuButton<int>));
+      await tester.pumpAndSettle();
+      expect(find.text('Maia 1500'), findsOneWidget);
+      await tester.tap(find.text('Maia 1500'));
+      await tester.pumpAndSettle();
+      expect(selectedRating, equals(1500));
     });
   });
 }

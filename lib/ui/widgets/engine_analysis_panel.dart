@@ -7,6 +7,7 @@ import '../../models/engine_settings.dart';
 import '../../models/maia_dual_analysis.dart';
 import '../../utils/win_rate_calculator.dart';
 import 'chess_move_token.dart';
+import 'maia_stockfish_comparison_section.dart';
 import 'moves_by_rating_chart.dart';
 
 class EngineAnalysisPanel extends StatelessWidget {
@@ -296,7 +297,38 @@ class EngineAnalysisPanel extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // PV lines list
+                    // 1. Maia vs Stockfish Comparison Section (Maiachess.com workbench layout)
+                    if (movesByRatingData != null &&
+                        (!movesByRatingData!.isModelInstalled || movesByRatingData!.curves.isNotEmpty)) ...[
+                      MaiaStockfishComparisonSection(
+                        analysis: analysis,
+                        movesByRatingData: movesByRatingData,
+                        activeRating: movesByRatingData!.activeRating,
+                        onRatingChanged: onSelectMaiaRating,
+                        onHighlightMove: onHighlightMove,
+                        onPlayMove: onPlayMove,
+                        currentPosition: currentPosition,
+                        highlightedUciMove: highlightedUciMove,
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+
+                    // 2. Interactive Moves by Rating Chart (Maiachess.com analysis style)
+                    if (movesByRatingData != null &&
+                        (!movesByRatingData!.isModelInstalled || movesByRatingData!.curves.isNotEmpty)) ...[
+                      RepaintBoundary(
+                        child: MovesByRatingChart(
+                          dataset: movesByRatingData!,
+                          onRatingSelected: onSelectMaiaRating,
+                          onMoveSelected: onHighlightMove,
+                          onDownloadModelRequested: onDownloadMaiaModelRequested,
+                          highlightedUciMove: highlightedUciMove,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+
+                    // 3. Engine PV lines list
                     if (lines.isEmpty)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -309,24 +341,22 @@ class EngineAnalysisPanel extends StatelessWidget {
                           ),
                         ),
                       )
-                    else
-                      ...lines.map((line) => _buildPvLineItem(context, line, infoStats)),
-
-                    // Interactive Moves by Rating Chart (Maiachess.com analysis style)
-                    if (movesByRatingData != null &&
-                        (!movesByRatingData!.isModelInstalled || movesByRatingData!.curves.isNotEmpty)) ...[
-                      const SizedBox(height: 6),
-                      RepaintBoundary(
-                        child: MovesByRatingChart(
-                          dataset: movesByRatingData!,
-                          onRatingSelected: onSelectMaiaRating,
-                          onMoveSelected: onHighlightMove,
-                          onDownloadModelRequested: onDownloadMaiaModelRequested,
-                          highlightedUciMove: highlightedUciMove,
+                    else ...[
+                      const Padding(
+                        padding: EdgeInsets.only(top: 2, bottom: 4),
+                        child: Text(
+                          'ENGINE LINES & VARIATIONS',
+                          style: TextStyle(
+                            color: Colors.white38,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      ...lines.map((line) => _buildPvLineItem(context, line, infoStats)),
                     ],
+                    const SizedBox(height: 12),
                   ],
                 ),
               ),

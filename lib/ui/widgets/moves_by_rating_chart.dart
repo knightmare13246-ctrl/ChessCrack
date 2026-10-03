@@ -368,7 +368,7 @@ class _RatingChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     const leftPad = 48.0;
-    const rightPad = 34.0;
+    const rightPad = 42.0;
     const topPad = 8.0;
     const bottomPad = 20.0;
 
@@ -607,7 +607,9 @@ class _RatingChartPainter extends CustomPainter {
       endLabels.add(_CurveEndLabel(
         san: curve.sanMove.isNotEmpty ? curve.sanMove : curve.uciMove,
         color: curve.curveColor,
-        x: lastPt.dx + 4,
+        originX: lastPt.dx,
+        originY: lastPt.dy,
+        x: lastPt.dx + 6,
         y: lastPt.dy,
       ));
     }
@@ -640,8 +642,8 @@ class _RatingChartPainter extends CustomPainter {
     // Sort by Y position ascending (top of screen to bottom)
     labels.sort((a, b) => a.y.compareTo(b.y));
 
-    // Collision avoidance: ensure min vertical separation of 11px
-    const minDistance = 11.0;
+    // Collision avoidance: ensure min vertical separation of 13px
+    const minDistance = 13.0;
     for (int i = 1; i < labels.length; i++) {
       final prev = labels[i - 1];
       final curr = labels[i];
@@ -650,10 +652,33 @@ class _RatingChartPainter extends CustomPainter {
       }
     }
 
+    // Boundary relaxation: if bottom overflowed, shift upward
+    final maxAllowedY = topPad + chartH - 4.0;
+    if (labels.last.adjustedY > maxAllowedY) {
+      final excess = labels.last.adjustedY - maxAllowedY;
+      for (final lbl in labels) {
+        lbl.adjustedY = (lbl.adjustedY - excess).clamp(topPad + 4.0, maxAllowedY);
+      }
+    }
+
     final tp = TextPainter(textDirection: TextDirection.ltr);
+    final leaderPaint = Paint()
+      ..strokeWidth = 0.8
+      ..style = PaintingStyle.stroke;
+
     for (final lbl in labels) {
-      // Strictly clamp label inside topPad and topPad + chartH bounds
-      final clampedY = lbl.adjustedY.clamp(topPad + 4.0, topPad + chartH - 4.0);
+      final clampedY = lbl.adjustedY.clamp(topPad + 4.0, maxAllowedY);
+
+      // Draw subtle connecting leader line if label shifted by more than 2px
+      if ((clampedY - lbl.originY).abs() > 2.0) {
+        leaderPaint.color = lbl.color.withValues(alpha: 0.5);
+        canvas.drawLine(
+          Offset(lbl.originX + 1.0, lbl.originY),
+          Offset(lbl.x - 1.0, clampedY),
+          leaderPaint,
+        );
+      }
+
       tp.text = TextSpan(
         text: lbl.san,
         style: TextStyle(
@@ -664,6 +689,14 @@ class _RatingChartPainter extends CustomPainter {
         ),
       );
       tp.layout();
+
+      // Background pill for pristine legibility against gridlines
+      final bgRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(lbl.x - 1, clampedY - tp.height / 2 - 1, tp.width + 2, tp.height + 2),
+        const Radius.circular(2),
+      );
+      canvas.drawRRect(bgRect, Paint()..color = const Color(0xE616161B));
+
       tp.paint(canvas, Offset(lbl.x, clampedY - tp.height / 2));
     }
   }
@@ -800,6 +833,8 @@ class _RatingChartPainter extends CustomPainter {
 class _CurveEndLabel {
   final String san;
   final Color color;
+  final double originX;
+  final double originY;
   final double x;
   final double y;
   late double adjustedY;
@@ -807,6 +842,8 @@ class _CurveEndLabel {
   _CurveEndLabel({
     required this.san,
     required this.color,
+    required this.originX,
+    required this.originY,
     required this.x,
     required this.y,
   }) {

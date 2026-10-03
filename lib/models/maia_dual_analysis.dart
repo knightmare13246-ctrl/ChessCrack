@@ -198,12 +198,12 @@ class MovesByRatingDataset {
   ];
 
   static const List<Color> palette = [
-    Color(0xFF4CAF50), // Maia Green (e.g. e4)
-    Color(0xFFFFF59D), // Maia Soft Cream (e.g. d4)
-    Color(0xFFFFB74D), // Maia Warm Amber (e.g. Nf3)
-    Color(0xFF64B5F6), // Soft Sky Blue
-    Color(0xFFBA68C8), // Soft Purple
-    Color(0xFFFF8A65), // Soft Coral
+    Color(0xFF4CAF50), // Green (e.g. e4)
+    Color(0xFFFFA726), // Amber / Warm Orange (e.g. d4)
+    Color(0xFF42A5F5), // Sky Blue (e.g. Nf3)
+    Color(0xFFAB47BC), // Purple (e.g. c4)
+    Color(0xFFFF7043), // Coral / Deep Orange (e.g. e3)
+    Color(0xFF26C6DA), // Cyan / Teal (e.g. c3)
   ];
 }
 
