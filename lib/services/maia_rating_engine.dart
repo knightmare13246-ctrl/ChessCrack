@@ -27,6 +27,7 @@ class _WorkerSweepRequest {
   final List<String> legalMovesUci;
   final bool isBlack;
   final List<int> ratings;
+  final int activeRating;
   final List<String> priorityUciMoves;
 
   _WorkerSweepRequest({
@@ -38,6 +39,7 @@ class _WorkerSweepRequest {
     required this.legalMovesUci,
     required this.isBlack,
     required this.ratings,
+    required this.activeRating,
     required this.priorityUciMoves,
   });
 }
@@ -47,12 +49,14 @@ class _WorkerSweepResponse {
   final bool success;
   final Map<int, Map<String, double>>? ratingMoveProbabilities;
   final String? error;
+  final bool isPartial;
 
   _WorkerSweepResponse({
     required this.requestId,
     required this.success,
     this.ratingMoveProbabilities,
     this.error,
+    this.isPartial = false,
   });
 }
 
@@ -80,9 +84,9 @@ void _maiaWorkerEntryPoint(SendPort mainSendPort) {
         }
         OrtEnv.instance.init();
         final sessionOptions = OrtSessionOptions()
-          ..setIntraOpNumThreads(1)
+          ..setIntraOpNumThreads(2)
           ..setInterOpNumThreads(1)
-          ..setSessionGraphOptimizationLevel(GraphOptimizationLevel.ortDisableAll);
+          ..setSessionGraphOptimizationLevel(GraphOptimizationLevel.ortEnableAll);
         workerSession?.release();
         workerSession = OrtSession.fromFile(file, sessionOptions);
         loadedModelPath = message.modelPath;
@@ -102,17 +106,26 @@ void _maiaWorkerEntryPoint(SendPort mainSendPort) {
       }
       final session = workerSession!;
 
+      // Prioritize activeRating as index 0 so user gets instant 1-2s candidate moves!
+      final orderedRatings = <int>[];
+      orderedRatings.add(message.activeRating);
+      for (final r in message.ratings) {
+        if (r != message.activeRating) {
+          orderedRatings.add(r);
+        }
+      }
+
       final ratingMoveProbs = <int, Map<String, double>>{};
       bool aborted = false;
 
-      for (int i = 0; i < message.ratings.length; i++) {
+      for (int i = 0; i < orderedRatings.length; i++) {
         // Fast cancellation if superseded by a newer request while computing
         if (message.requestId != currentActiveRequestId) {
           aborted = true;
           break;
         }
 
-        final rating = message.ratings[i];
+        final rating = orderedRatings[i];
         final rDouble = rating.toDouble();
         final eloSelf = Float32List.fromList([rDouble]);
         final eloOppo = Float32List.fromList([rDouble]);
@@ -145,6 +158,16 @@ void _maiaWorkerEntryPoint(SendPort mainSendPort) {
         }
 
         ratingMoveProbs[rating] = moveProbabilities;
+
+        // Send immediate partial update after the very first inference (the active rating)!
+        if (i == 0 && orderedRatings.length > 1) {
+          message.replyPort.send(_WorkerSweepResponse(
+            requestId: message.requestId,
+            success: true,
+            ratingMoveProbabilities: Map<int, Map<String, double>>.from(ratingMoveProbs),
+            isPartial: true,
+          ));
+        }
       }
 
       if (aborted) {
@@ -158,6 +181,7 @@ void _maiaWorkerEntryPoint(SendPort mainSendPort) {
           requestId: message.requestId,
           success: true,
           ratingMoveProbabilities: ratingMoveProbs,
+          isPartial: false,
         ));
       }
     } else if (message == 'dispose') {
@@ -258,6 +282,7 @@ class MaiaRatingEngine {
     required int activeRating,
     required String modelPath,
     List<String> priorityUciMoves = const [],
+    void Function(MaiaRatingSweepSnapshot partialSnapshot)? onPartialUpdate,
   }) async {
     final requestId = ++_analysisRequestId;
     final currentFen = position.toFen();
@@ -285,101 +310,46 @@ class MaiaRatingEngine {
         legalMovesUci: legalMovesUci,
         isBlack: isBlack,
         ratings: supportedRatings,
+        activeRating: activeRating,
         priorityUciMoves: priorityUciMoves,
       );
 
       _workerSendPort!.send(request);
-      final response = await replyPort.first as _WorkerSweepResponse;
 
-      // 3. Stale request check: discard if superseded
-      if (requestId != _analysisRequestId || !response.success || response.ratingMoveProbabilities == null) {
-        return null;
-      }
+      final completer = Completer<MaiaRatingSweepSnapshot?>();
 
-      final ratingMoveProbs = response.ratingMoveProbabilities!;
-
-      // 4. Stable Candidate Move Selection:
-      // Collect top moves based on peak probability across all ratings
-      final candidateSet = <String>{};
-
-      // Priority moves (explicit user highlights or played move, limit to at most 2)
-      for (final m in priorityUciMoves) {
-        if (candidateSet.length < 2 && position.legalMoves.any((lm) => lm.uci == m)) {
-          candidateSet.add(m);
-        }
-      }
-
-      // Calculate peak probability for each move across all 21 ratings
-      final peakProbs = <String, double>{};
-      for (final rating in supportedRatings) {
-        final probs = ratingMoveProbs[rating] ?? {};
-        for (final entry in probs.entries) {
-          final current = peakProbs[entry.key] ?? 0.0;
-          if (entry.value > current) {
-            peakProbs[entry.key] = entry.value;
-          }
-        }
-      }
-
-      // Sort moves by peak probability descending
-      final sortedByPeak = peakProbs.entries.toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
-
-      for (final entry in sortedByPeak) {
-        if (candidateSet.length >= MovesByRatingDataset.palette.length) break;
-        candidateSet.add(entry.key);
-      }
-
-      final candidateMoves = candidateSet.toList();
-
-      // 5. Build continuous MoveRatingCurve series for each candidate move across all 21 ratings
-      final seriesList = <MoveRatingCurve>[];
-      for (int i = 0; i < candidateMoves.length; i++) {
-        final uci = candidateMoves[i];
-        final color = MovesByRatingDataset.palette[i % MovesByRatingDataset.palette.length];
-
-        final points = <MoveRatingPoint>[];
-        for (final rating in supportedRatings) {
-          final probs = ratingMoveProbs[rating] ?? {};
-          final prob = (probs[uci] ?? 0.0) * 100.0; // 0.0 to 100.0%
-          points.add(MoveRatingPoint(rating: rating, probability: prob));
+      replyPort.listen((message) {
+        if (message is! _WorkerSweepResponse) return;
+        if (message.requestId != _analysisRequestId) {
+          replyPort.close();
+          if (!completer.isCompleted) completer.complete(null);
+          return;
         }
 
-        // Format SAN string from current position
-        String san = uci;
-        try {
-          final move = position.legalMoves.firstWhere(
-            (m) => m.uci == uci,
-            orElse: () => ChessMove(
-              from: Square.fromAlgebraic(uci.substring(0, 2)),
-              to: Square.fromAlgebraic(uci.substring(2, 4)),
-              piece: position.pieceAt(Square.fromAlgebraic(uci.substring(0, 2)))!,
-            ),
-          );
-          san = SANFormatter.formatSan(position, move);
-        } catch (_) {}
+        if (!message.success || message.ratingMoveProbabilities == null) {
+          replyPort.close();
+          if (!completer.isCompleted) completer.complete(null);
+          return;
+        }
 
-        seriesList.add(MoveRatingCurve(
-          uciMove: uci,
-          sanMove: san,
-          curveColor: color,
-          points: points,
-        ));
-      }
+        final snapshot = _buildSnapshot(
+          position: position,
+          positionRevision: positionRevision,
+          currentFen: currentFen,
+          requestId: requestId,
+          priorityUciMoves: priorityUciMoves,
+          ratingMoveProbs: message.ratingMoveProbabilities!,
+        );
 
-      final snapshot = MaiaRatingSweepSnapshot(
-        fen: currentFen,
-        modelId: 'maia3_simplified',
-        modelVersion: '3.0 (CSSLab / ICLR 2026)',
-        ratings: List<int>.from(supportedRatings),
-        candidateMoves: candidateMoves,
-        series: seriesList,
-        positionRevision: positionRevision,
-        analysisRequestId: requestId,
-        createdAt: DateTime.now(),
-      );
+        if (message.isPartial) {
+          onPartialUpdate?.call(snapshot);
+        } else {
+          replyPort.close();
+          if (!completer.isCompleted) completer.complete(snapshot);
+        }
+      });
 
-      return snapshot;
+      return await completer.future;
     } catch (e, stack) {
       developer.log('MaiaRatingEngine: Inference error: $e', name: 'MaiaRatingEngine', error: e, stackTrace: stack);
       return null;
@@ -388,6 +358,93 @@ class MaiaRatingEngine {
         _isComputing = false;
       }
     }
+  }
+
+  MaiaRatingSweepSnapshot _buildSnapshot({
+    required ChessPosition position,
+    required int positionRevision,
+    required String currentFen,
+    required int requestId,
+    required List<String> priorityUciMoves,
+    required Map<int, Map<String, double>> ratingMoveProbs,
+  }) {
+    final candidateSet = <String>{};
+
+    // Priority moves (explicit user highlights or played move, limit to at most 2)
+    for (final m in priorityUciMoves) {
+      if (candidateSet.length < 2 && position.legalMoves.any((lm) => lm.uci == m)) {
+        candidateSet.add(m);
+      }
+    }
+
+    // Calculate peak probability for each move across available ratings
+    final peakProbs = <String, double>{};
+    for (final probs in ratingMoveProbs.values) {
+      for (final entry in probs.entries) {
+        final current = peakProbs[entry.key] ?? 0.0;
+        if (entry.value > current) {
+          peakProbs[entry.key] = entry.value;
+        }
+      }
+    }
+
+    // Sort moves by peak probability descending
+    final sortedByPeak = peakProbs.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    for (final entry in sortedByPeak) {
+      if (candidateSet.length >= MovesByRatingDataset.palette.length) break;
+      candidateSet.add(entry.key);
+    }
+
+    final candidateMoves = candidateSet.toList();
+    final availableRatings = ratingMoveProbs.keys.toList()..sort();
+
+    final seriesList = <MoveRatingCurve>[];
+    for (int i = 0; i < candidateMoves.length; i++) {
+      final uci = candidateMoves[i];
+      final color = MovesByRatingDataset.palette[i % MovesByRatingDataset.palette.length];
+
+      final points = <MoveRatingPoint>[];
+      for (final rating in availableRatings) {
+        final probs = ratingMoveProbs[rating] ?? {};
+        final prob = (probs[uci] ?? 0.0) * 100.0; // 0.0 to 100.0%
+        points.add(MoveRatingPoint(rating: rating, probability: prob));
+      }
+
+      // Format SAN string from current position
+      String san = uci;
+      try {
+        final move = position.legalMoves.firstWhere(
+          (m) => m.uci == uci,
+          orElse: () => ChessMove(
+            from: Square.fromAlgebraic(uci.substring(0, 2)),
+            to: Square.fromAlgebraic(uci.substring(2, 4)),
+            piece: position.pieceAt(Square.fromAlgebraic(uci.substring(0, 2)))!,
+          ),
+        );
+        san = SANFormatter.formatSan(position, move);
+      } catch (_) {}
+
+      seriesList.add(MoveRatingCurve(
+        uciMove: uci,
+        sanMove: san,
+        curveColor: color,
+        points: points,
+      ));
+    }
+
+    return MaiaRatingSweepSnapshot(
+      fen: currentFen,
+      modelId: 'maia3_simplified',
+      modelVersion: '3.0 (CSSLab / ICLR 2026)',
+      ratings: availableRatings,
+      candidateMoves: candidateMoves,
+      series: seriesList,
+      positionRevision: positionRevision,
+      analysisRequestId: requestId,
+      createdAt: DateTime.now(),
+    );
   }
 
   void dispose() {

@@ -396,6 +396,14 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
         activeRating: _activeRating,
         modelPath: modelPath,
         priorityUciMoves: priorityMoves,
+        onPartialUpdate: (partialSnapshot) {
+          if (!mounted || _gameTree.currentNode.position.toFen() != currentFen) return;
+          _maiaSnapshotCache[currentFen] = partialSnapshot;
+          setState(() {
+            _movesByRatingDataset = partialSnapshot.toDataset(activeRating: _activeRating);
+            _movesByRatingNotifier.value = _movesByRatingDataset;
+          });
+        },
       );
 
       if (!mounted || _gameTree.currentNode.position.toFen() != currentFen) return;
@@ -458,6 +466,7 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
             snapshot: _movesByRatingDataset!.snapshot,
           );
         }
+        _movesByRatingNotifier.value = _movesByRatingDataset;
       });
     }
   }
