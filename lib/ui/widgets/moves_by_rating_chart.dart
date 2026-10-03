@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../models/maia_dual_analysis.dart';
 import 'moves_by_rating_info_dialog.dart';
@@ -34,6 +35,7 @@ class _MovesByRatingChartState extends State<MovesByRatingChart> {
   int? _hoverRating;
   Offset? _touchPosition;
   late bool _isExpanded;
+  final Set<String> _hiddenMoves = {};
 
   @override
   void initState() {
@@ -88,13 +90,38 @@ class _MovesByRatingChartState extends State<MovesByRatingChart> {
                       constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
                     ),
                     if (dataset.isComputing) ...[
-                      const SizedBox(width: 6),
-                      const SizedBox(
-                        width: 10,
-                        height: 10,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 1.5,
-                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFE7F6D)),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFE7F6D).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: const Color(0xFFFE7F6D).withValues(alpha: 0.4),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 8,
+                              height: 8,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFE7F6D)),
+                              ),
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              'Updating…',
+                              style: TextStyle(
+                                color: Color(0xFFFE7F6D),
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -212,12 +239,11 @@ class _MovesByRatingChartState extends State<MovesByRatingChart> {
                 spacing: 6,
                 runSpacing: 4,
                 children: dataset.curves.map((curve) {
-                  final isSelected = widget.highlightedUciMove == curve.uciMove;
+                  final isHidden = _hiddenMoves.contains(curve.uciMove);
+                  final isSelected = widget.highlightedUciMove == curve.uciMove && !isHidden;
                   final prob = curve.probabilityAtRating(activeRating) ?? 0.0;
-                  return GestureDetector(
-                    onTap: () {
-                      widget.onMoveSelected?.call(curve.uciMove);
-                    },
+                  return Opacity(
+                    opacity: isHidden ? 0.45 : 1.0,
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
@@ -226,41 +252,79 @@ class _MovesByRatingChartState extends State<MovesByRatingChart> {
                             : const Color(0xFF1E1E26),
                         borderRadius: BorderRadius.circular(4),
                         border: Border.all(
-                          color: isSelected
-                              ? curve.curveColor
-                              : curve.curveColor.withValues(alpha: 0.45),
+                          color: isHidden
+                              ? const Color(0xFF383848)
+                              : isSelected
+                                  ? curve.curveColor
+                                  : curve.curveColor.withValues(alpha: 0.45),
                           width: isSelected ? 1.4 : 0.8,
                         ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(
-                            width: 7,
-                            height: 7,
-                            decoration: BoxDecoration(
-                              color: curve.curveColor,
-                              shape: BoxShape.circle,
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              setState(() {
+                                if (isHidden) {
+                                  _hiddenMoves.remove(curve.uciMove);
+                                } else {
+                                  _hiddenMoves.add(curve.uciMove);
+                                }
+                              });
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(2.0),
+                              child: isHidden
+                                  ? Icon(
+                                      Icons.visibility_off_outlined,
+                                      size: 11,
+                                      color: curve.curveColor.withValues(alpha: 0.6),
+                                    )
+                                  : Container(
+                                      width: 7,
+                                      height: 7,
+                                      decoration: BoxDecoration(
+                                        color: curve.curveColor,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
                             ),
                           ),
                           const SizedBox(width: 4),
-                          Text(
-                            curve.sanMove.isNotEmpty ? curve.sanMove : curve.uciMove,
-                            style: TextStyle(
-                              color: curve.curveColor,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'monospace',
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${prob.toStringAsFixed(1)}%',
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              fontFamily: 'monospace',
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              if (isHidden) {
+                                setState(() => _hiddenMoves.remove(curve.uciMove));
+                              }
+                              widget.onMoveSelected?.call(curve.uciMove);
+                            },
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  curve.sanMove.isNotEmpty ? curve.sanMove : curve.uciMove,
+                                  style: TextStyle(
+                                    color: isHidden ? Colors.white38 : curve.curveColor,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    fontFamily: 'monospace',
+                                    decoration: isHidden ? TextDecoration.lineThrough : null,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${prob.toStringAsFixed(1)}%',
+                                  style: TextStyle(
+                                    color: isHidden ? Colors.white24 : Colors.white70,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -294,6 +358,7 @@ class _MovesByRatingChartState extends State<MovesByRatingChart> {
                           activeRating: activeRating,
                           touchPosition: _touchPosition,
                           highlightedUciMove: widget.highlightedUciMove,
+                          hiddenMoves: _hiddenMoves,
                         ),
                       ),
                     ),
@@ -357,12 +422,14 @@ class _RatingChartPainter extends CustomPainter {
   final int activeRating;
   final Offset? touchPosition;
   final String? highlightedUciMove;
+  final Set<String> hiddenMoves;
 
   _RatingChartPainter({
     required this.dataset,
     required this.activeRating,
     this.touchPosition,
     this.highlightedUciMove,
+    this.hiddenMoves = const {},
   });
 
   @override
@@ -387,6 +454,7 @@ class _RatingChartPainter extends CustomPainter {
     // Determine Y max domain (default 100%, or 60% if all points are low)
     double maxObservedProb = 0.0;
     for (final curve in dataset.curves) {
+      if (hiddenMoves.contains(curve.uciMove)) continue;
       for (final pt in curve.points) {
         if (pt.probability > maxObservedProb) {
           maxObservedProb = pt.probability;
@@ -519,7 +587,7 @@ class _RatingChartPainter extends CustomPainter {
     final endLabels = <_CurveEndLabel>[];
 
     for (final curve in dataset.curves) {
-      if (curve.points.isEmpty) continue;
+      if (curve.points.isEmpty || hiddenMoves.contains(curve.uciMove)) continue;
 
       final isHighlight = highlightedUciMove == curve.uciMove;
       final sortedPoints = List<MoveRatingPoint>.from(curve.points)
@@ -534,19 +602,8 @@ class _RatingChartPainter extends CustomPainter {
 
       if (pixelPoints.isEmpty) continue;
 
-      // A. Build Cubic Path
-      final linePath = Path();
-      linePath.moveTo(pixelPoints.first.dx, pixelPoints.first.dy);
-
-      for (int i = 0; i < pixelPoints.length - 1; i++) {
-        final p0 = pixelPoints[i];
-        final p1 = pixelPoints[i + 1];
-        final cx1 = p0.dx + (p1.dx - p0.dx) / 2.0;
-        final cy1 = p0.dy;
-        final cx2 = p0.dx + (p1.dx - p0.dx) / 2.0;
-        final cy2 = p1.dy;
-        linePath.cubicTo(cx1, cy1, cx2, cy2, p1.dx, p1.dy);
-      }
+      // A. Build Cubic Path using Fritsch-Carlson Monotone Cubic Spline
+      final linePath = MonotoneCubicSpline.computePath(pixelPoints);
 
       // B. Draw Shaded Gradient Area beneath curve
       final areaPath = Path.from(linePath);
@@ -729,6 +786,7 @@ class _RatingChartPainter extends CustomPainter {
       });
 
     for (final curve in sortedCurves) {
+      if (hiddenMoves.contains(curve.uciMove)) continue;
       final prob = curve.probabilityAtRating(activeRating) ?? 0.0;
       final san = curve.sanMove.isNotEmpty ? curve.sanMove : curve.uciMove;
       lineSpans.add(TextSpan(
@@ -826,7 +884,8 @@ class _RatingChartPainter extends CustomPainter {
     return oldDelegate.dataset != dataset ||
         oldDelegate.activeRating != activeRating ||
         oldDelegate.touchPosition != touchPosition ||
-        oldDelegate.highlightedUciMove != highlightedUciMove;
+        oldDelegate.highlightedUciMove != highlightedUciMove ||
+        !setEquals(oldDelegate.hiddenMoves, hiddenMoves);
   }
 }
 
@@ -848,5 +907,91 @@ class _CurveEndLabel {
     required this.y,
   }) {
     adjustedY = y;
+  }
+}
+
+/// Mathematically rigorous Fritsch-Carlson Monotone Cubic Spline interpolation.
+///
+/// Guarantees:
+/// 1. Passes exactly through each sample point (C0 continuity).
+/// 2. Smooth tangent transitions between segments (C1 continuity).
+/// 3. Monotonicity-preserving: eliminates overshoot, undershoot, and unphysical
+///    oscillations between discrete probability samples.
+class MonotoneCubicSpline {
+  static Path computePath(List<Offset> points) {
+    final path = Path();
+    if (points.isEmpty) return path;
+    path.moveTo(points[0].dx, points[0].dy);
+    if (points.length == 1) return path;
+
+    if (points.length == 2) {
+      path.lineTo(points[1].dx, points[1].dy);
+      return path;
+    }
+
+    final n = points.length;
+    // Step 1: Compute secant slopes
+    final dx = List<double>.filled(n - 1, 0.0);
+    final dy = List<double>.filled(n - 1, 0.0);
+    final slopes = List<double>.filled(n - 1, 0.0);
+
+    for (int i = 0; i < n - 1; i++) {
+      dx[i] = points[i + 1].dx - points[i].dx;
+      dy[i] = points[i + 1].dy - points[i].dy;
+      slopes[i] = dx[i] == 0.0 ? 0.0 : dy[i] / dx[i];
+    }
+
+    // Step 2: Initialize tangents
+    final m = List<double>.filled(n, 0.0);
+    m[0] = slopes[0];
+    m[n - 1] = slopes[n - 2];
+
+    for (int i = 1; i < n - 1; i++) {
+      if (slopes[i - 1] * slopes[i] <= 0.0) {
+        m[i] = 0.0;
+      } else {
+        final h0 = dx[i - 1];
+        final h1 = dx[i];
+        if (h0 + h1 != 0.0) {
+          m[i] = (h0 * slopes[i] + h1 * slopes[i - 1]) / (h0 + h1);
+        } else {
+          m[i] = (slopes[i - 1] + slopes[i]) / 2.0;
+        }
+      }
+    }
+
+    // Step 3: Fritsch-Carlson monotonicity check & adjustment
+    for (int i = 0; i < n - 1; i++) {
+      if (slopes[i] == 0.0) {
+        m[i] = 0.0;
+        m[i + 1] = 0.0;
+      } else {
+        final alpha = m[i] / slopes[i];
+        final beta = m[i + 1] / slopes[i];
+        if (alpha < 0.0) m[i] = 0.0;
+        if (beta < 0.0) m[i + 1] = 0.0;
+
+        final sumSquares = alpha * alpha + beta * beta;
+        if (sumSquares > 9.0) {
+          final tau = 3.0 / math.sqrt(sumSquares);
+          m[i] = tau * alpha * slopes[i];
+          m[i + 1] = tau * beta * slopes[i];
+        }
+      }
+    }
+
+    // Step 4: Construct cubic Bézier segments
+    for (int i = 0; i < n - 1; i++) {
+      final p0 = points[i];
+      final p1 = points[i + 1];
+      final segmentDx = dx[i];
+      final cp1x = p0.dx + segmentDx / 3.0;
+      final cp1y = p0.dy + m[i] * segmentDx / 3.0;
+      final cp2x = p1.dx - segmentDx / 3.0;
+      final cp2y = p1.dy - m[i + 1] * segmentDx / 3.0;
+      path.cubicTo(cp1x, cp1y, cp2x, cp2y, p1.dx, p1.dy);
+    }
+
+    return path;
   }
 }

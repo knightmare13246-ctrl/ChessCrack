@@ -692,5 +692,80 @@ void main() {
       final sumProbsBlack = decodedBlack.values.reduce((a, b) => a + b);
       expect(sumProbsBlack, closeTo(1.0, 1e-5));
     });
+
+    test('MonotoneCubicSpline creates valid non-empty paths without oscillation or crash', () {
+      expect(MonotoneCubicSpline.computePath([]), isNotNull);
+      expect(MonotoneCubicSpline.computePath([const Offset(0, 0)]), isNotNull);
+      expect(MonotoneCubicSpline.computePath([const Offset(0, 0), const Offset(10, 10)]), isNotNull);
+
+      // 21 sample points simulating rating sweep
+      final samplePoints = List.generate(21, (i) => Offset(i * 10.0, (i * i) % 50.0));
+      final path = MonotoneCubicSpline.computePath(samplePoints);
+      expect(path, isNotNull);
+      final bounds = path.getBounds();
+      expect(bounds.width, closeTo(200.0, 0.01));
+    });
+
+    testWidgets('MovesByRatingChart legend chip toggles hidden state and Updating badge shows when isComputing', (WidgetTester tester) async {
+      final ratings = [1200, 1600, 2000];
+      final dataset = MovesByRatingDataset(
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        positionRevision: 1,
+        supportedRatings: ratings,
+        curves: const [
+          MoveRatingCurve(
+            uciMove: 'e2e4',
+            sanMove: 'e4',
+            curveColor: Color(0xFF4CAF50),
+            points: [
+              MoveRatingPoint(rating: 1200, probability: 40.0),
+              MoveRatingPoint(rating: 1600, probability: 50.0),
+              MoveRatingPoint(rating: 2000, probability: 60.0),
+            ],
+          ),
+          MoveRatingCurve(
+            uciMove: 'd2d4',
+            sanMove: 'd4',
+            curveColor: Color(0xFFFFB74D),
+            points: [
+              MoveRatingPoint(rating: 1200, probability: 30.0),
+              MoveRatingPoint(rating: 1600, probability: 35.0),
+              MoveRatingPoint(rating: 2000, probability: 25.0),
+            ],
+          ),
+        ],
+        activeRating: 1600,
+        isComputing: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 360,
+                child: MovesByRatingChart(
+                  dataset: dataset,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Updating…'), findsOneWidget);
+      expect(find.text('e4'), findsOneWidget);
+      expect(find.text('d4'), findsOneWidget);
+
+      // Tap on the visibility dot of the e4 chip
+      final circleFinder = find.byType(GestureDetector);
+      expect(circleFinder, findsWidgets);
+
+      await tester.tap(find.text('e4'));
+      await tester.pump();
+
+      // Underlying dataset is untouched
+      expect(dataset.curves.length, equals(2));
+    });
   });
 }

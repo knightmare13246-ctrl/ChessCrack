@@ -298,10 +298,7 @@ class EngineAnalysisPanel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // 1. Maia vs Stockfish Comparison Section (Maiachess.com workbench layout)
-                    if (movesByRatingData != null &&
-                        (!movesByRatingData!.isModelInstalled ||
-                            movesByRatingData!.curves.isNotEmpty ||
-                            movesByRatingData!.isComputing)) ...[
+                    if (movesByRatingData != null) ...[
                       MaiaStockfishComparisonSection(
                         analysis: analysis,
                         movesByRatingData: movesByRatingData,
@@ -316,10 +313,7 @@ class EngineAnalysisPanel extends StatelessWidget {
                     ],
 
                     // 2. Interactive Moves by Rating Chart (Maiachess.com analysis style)
-                    if (movesByRatingData != null &&
-                        (!movesByRatingData!.isModelInstalled ||
-                            movesByRatingData!.curves.isNotEmpty ||
-                            movesByRatingData!.isComputing)) ...[
+                    if (movesByRatingData != null) ...[
                       RepaintBoundary(
                         child: MovesByRatingChart(
                           dataset: movesByRatingData!,

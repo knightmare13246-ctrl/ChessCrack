@@ -1,4 +1,3 @@
-import 'dart:developer' as developer;
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import '../models/chess_move.dart';
@@ -139,35 +138,35 @@ class MaiaTokenizer {
     required List<double> logits,
     required ChessPosition position,
   }) {
-    assert(logits.length >= totalMoves);
-    final isBlack = position.turn == PieceColor.black;
-    final legalMask = getLegalMoveMask(position);
+    return decodePolicyLogitsFromUciList(
+      logits: logits,
+      legalMovesUci: position.legalMoves.map((m) => m.uci).toList(),
+      isBlack: position.turn == PieceColor.black,
+    );
+  }
 
+  /// Low-level version that works with UCI move strings, suitable for background isolates.
+  static Map<String, double> decodePolicyLogitsFromUciList({
+    required List<double> logits,
+    required List<String> legalMovesUci,
+    required bool isBlack,
+  }) {
+    assert(logits.length >= totalMoves);
     final legalIndices = <int>[];
     double maxLogit = -double.infinity;
 
-    for (int i = 0; i < totalMoves; i++) {
-      if (legalMask[i]) {
-        legalIndices.add(i);
-        if (logits[i] > maxLogit) {
-          maxLogit = logits[i];
+    for (final uci in legalMovesUci) {
+      final modelUci = isBlack ? mirrorMove(uci) : uci;
+      final idx = _allMovesDict[modelUci];
+      if (idx != null) {
+        legalIndices.add(idx);
+        if (logits[idx] > maxLogit) {
+          maxLogit = logits[idx];
         }
       }
     }
 
-    if (legalIndices.isEmpty) {
-      if (kDebugMode) {
-        developer.log('decodePolicyLogits: legalIndices is EMPTY! position=${position.toFen()}', name: 'MaiaTokenizer');
-      }
-      return {};
-    }
-
-    if (kDebugMode) {
-      developer.log(
-        'decodePolicyLogits: legalIndices.length=${legalIndices.length}, maxLogit=$maxLogit',
-        name: 'MaiaTokenizer',
-      );
-    }
+    if (legalIndices.isEmpty) return {};
 
     double sumExp = 0.0;
     final expValues = List<double>.filled(legalIndices.length, 0.0);

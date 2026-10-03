@@ -375,7 +375,7 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
       });
     }
 
-    _maiaSweepDebounceTimer = Timer(const Duration(milliseconds: 500), () async {
+    _maiaSweepDebounceTimer = Timer(const Duration(milliseconds: 150), () async {
       if (!mounted || _gameTree.currentNode.position.toFen() != currentFen) return;
 
       // Candidate moves: include explicitly highlighted move or move played in game
@@ -412,7 +412,7 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
             fen: currentFen,
             positionRevision: currentRev,
             supportedRatings: MaiaRatingEngine.supportedRatings,
-            curves: const [],
+            curves: _movesByRatingDataset?.curves ?? const [],
             activeRating: _activeRating,
             isComputing: false,
             isModelInstalled: true,

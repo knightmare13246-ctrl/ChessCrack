@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
+import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 import 'package:onnxruntime/onnxruntime.dart';
 
@@ -10,136 +11,118 @@ import '../models/maia_dual_analysis.dart';
 import '../utils/san_formatter.dart';
 import 'maia_tokenizer.dart';
 
-/// Service responsible for executing rating-conditioned Maia neural network sweeps.
-///
-/// Implements the official Maia-3 model contract (CSSLab / ICLR 2026).
-/// Takes the current position and evaluates it across 21 discrete rating points
-/// (600 through 2600 in steps of 100), producing authentic, non-flat probability curves.
-class MaiaRatingEngine {
-  static final MaiaRatingEngine _instance = MaiaRatingEngine._internal();
-  factory MaiaRatingEngine() => _instance;
-  MaiaRatingEngine._internal();
+/// Worker message protocols for isolated background inference
+class _WorkerInitMessage {
+  final SendPort replyPort;
+  final String modelPath;
+  _WorkerInitMessage(this.replyPort, this.modelPath);
+}
 
-  OrtSession? _session;
-  String? _loadedModelPath;
-  int _analysisRequestId = 0;
-  bool _isComputing = false;
+class _WorkerSweepRequest {
+  final SendPort replyPort;
+  final int requestId;
+  final String fen;
+  final int positionRevision;
+  final Float32List tokens;
+  final List<String> legalMovesUci;
+  final bool isBlack;
+  final List<int> ratings;
+  final List<String> priorityUciMoves;
 
-  bool get isComputing => _isComputing;
-  bool get isModelLoaded => _session != null;
+  _WorkerSweepRequest({
+    required this.replyPort,
+    required this.requestId,
+    required this.fen,
+    required this.positionRevision,
+    required this.tokens,
+    required this.legalMovesUci,
+    required this.isBlack,
+    required this.ratings,
+    required this.priorityUciMoves,
+  });
+}
 
-  static const List<int> supportedRatings = [
-    600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500,
-    1600, 1700, 1800, 1900, 2000, 2100, 2200, 2300, 2400, 2500, 2600
-  ];
+class _WorkerSweepResponse {
+  final int requestId;
+  final bool success;
+  final Map<int, Map<String, double>>? ratingMoveProbabilities;
+  final String? error;
 
-  /// Loads the ONNX runtime model session if not already loaded.
-  Future<bool> ensureModelLoaded(String modelPath) async {
-    if (modelPath.contains('.download')) {
-      developer.log(
-        'MaiaRatingEngine: Refusing to load temporary download path: $modelPath',
-        name: 'MaiaRatingEngine',
-        level: 900,
-      );
-      return false;
-    }
+  _WorkerSweepResponse({
+    required this.requestId,
+    required this.success,
+    this.ratingMoveProbabilities,
+    this.error,
+  });
+}
 
-    if (_session != null && _loadedModelPath == modelPath) {
-      return true;
-    }
+/// Entrypoint executed inside the dedicated background worker isolate.
+/// All heavy ONNX C++ execution runs here without touching the Flutter UI thread.
+void _maiaWorkerEntryPoint(SendPort mainSendPort) {
+  final workerReceivePort = ReceivePort();
+  mainSendPort.send(workerReceivePort.sendPort);
 
-    final file = File(modelPath);
-    if (!file.existsSync() || file.lengthSync() < 1000000) {
-      return false;
-    }
+  OrtSession? workerSession;
+  String? loadedModelPath;
+  int currentActiveRequestId = 0;
 
-    try {
-      OrtEnv.instance.init();
-      final sessionOptions = OrtSessionOptions()
-        ..setIntraOpNumThreads(1)
-        ..setInterOpNumThreads(1)
-        ..setSessionGraphOptimizationLevel(GraphOptimizationLevel.ortDisableAll);
-
-      _session = OrtSession.fromFile(file, sessionOptions);
-      _loadedModelPath = modelPath;
-      if (kDebugMode) {
-        developer.log(
-          'ONNX session loaded successfully from $modelPath. '
-          'Inputs: ${_session?.inputNames}, Outputs: ${_session?.outputNames}',
-          name: 'MaiaRatingEngine',
-        );
+  workerReceivePort.listen((message) {
+    if (message is _WorkerInitMessage) {
+      if (loadedModelPath == message.modelPath && workerSession != null) {
+        message.replyPort.send(true);
+        return;
       }
-      return true;
-    } catch (e, stack) {
-      developer.log(
-        'MaiaRatingEngine: Failed to load ONNX session from $modelPath: $e',
-        name: 'MaiaRatingEngine',
-        error: e,
-        stackTrace: stack,
-      );
-      _session = null;
-      _loadedModelPath = null;
-      return false;
-    }
-  }
-
-  /// Evaluates the position across all 21 rating conditions in a single batch pass.
-  ///
-  /// Guarantees:
-  /// 1. Genuine model outputs mapped to their respective rating points.
-  /// 2. Request ID and revision protection to prevent stale/out-of-order updates.
-  /// 3. Stable candidate move tracking across the entire rating spectrum (600..2600).
-  Future<MaiaRatingSweepSnapshot?> computeSweep({
-    required ChessPosition position,
-    required int positionRevision,
-    required int activeRating,
-    required String modelPath,
-    List<String> priorityUciMoves = const [],
-  }) async {
-    final requestId = ++_analysisRequestId;
-    final currentFen = position.toFen();
-
-    final isLoaded = await ensureModelLoaded(modelPath);
-    if (!isLoaded || _session == null) {
-      return null;
-    }
-
-    _isComputing = true;
-    try {
-      // 1. Prepare one-hot board tokens for current position [1, 64, 12]
-      final singleTokens = MaiaTokenizer.tokenizePosition(position);
-
-      // Log Model Input Proof
-      if (kDebugMode) {
-        developer.log(
-          '[MAIA3_INPUT_PROOF] FEN: $currentFen\n'
-          'Sweeping ${supportedRatings.length} discrete ratings (600..2600)\n'
-          'tokens: shape=[1, 64, 12], dtype=float32\n'
-          'elo_self: [rating], elo_oppo: [rating]',
-          name: 'MaiaRatingEngine',
-        );
+      try {
+        final file = File(message.modelPath);
+        if (!file.existsSync() || file.lengthSync() < 1000000) {
+          message.replyPort.send(false);
+          return;
+        }
+        OrtEnv.instance.init();
+        final sessionOptions = OrtSessionOptions()
+          ..setIntraOpNumThreads(1)
+          ..setInterOpNumThreads(1)
+          ..setSessionGraphOptimizationLevel(GraphOptimizationLevel.ortDisableAll);
+        workerSession?.release();
+        workerSession = OrtSession.fromFile(file, sessionOptions);
+        loadedModelPath = message.modelPath;
+        message.replyPort.send(true);
+      } catch (e) {
+        message.replyPort.send(false);
       }
+    } else if (message is _WorkerSweepRequest) {
+      currentActiveRequestId = message.requestId;
+      if (workerSession == null) {
+        message.replyPort.send(_WorkerSweepResponse(
+          requestId: message.requestId,
+          success: false,
+          error: 'Model session not loaded in worker isolate',
+        ));
+        return;
+      }
+      final session = workerSession!;
 
-      final ratingPoints = <MaiaRatingPoint>[];
+      final ratingMoveProbs = <int, Map<String, double>>{};
+      bool aborted = false;
 
-      for (int i = 0; i < supportedRatings.length; i++) {
-        // Fast cancellation check if user jumped to a different position
-        if (requestId != _analysisRequestId) {
-          developer.log('MaiaRatingEngine: Stale request ($requestId != $_analysisRequestId). Discarding.', name: 'MaiaRatingEngine');
-          return null;
+      for (int i = 0; i < message.ratings.length; i++) {
+        // Fast cancellation if superseded by a newer request while computing
+        if (message.requestId != currentActiveRequestId) {
+          aborted = true;
+          break;
         }
 
-        final rating = supportedRatings[i];
+        final rating = message.ratings[i];
         final rDouble = rating.toDouble();
         final eloSelf = Float32List.fromList([rDouble]);
         final eloOppo = Float32List.fromList([rDouble]);
 
-        final inputTokens = OrtValueTensor.createTensorWithDataList(singleTokens, [1, 64, 12]);
+        final inputTokens = OrtValueTensor.createTensorWithDataList(message.tokens, [1, 64, 12]);
         final inputEloSelf = OrtValueTensor.createTensorWithDataList(eloSelf, [1]);
         final inputEloOppo = OrtValueTensor.createTensorWithDataList(eloOppo, [1]);
 
         final runOptions = OrtRunOptions();
-        final outputs = _session!.run(runOptions, {
+        final outputs = session.run(runOptions, {
           'tokens': inputTokens,
           'elo_self': inputEloSelf,
           'elo_oppo': inputEloOppo,
@@ -151,32 +134,172 @@ class MaiaRatingEngine {
         runOptions.release();
 
         final rawLogits = outputs[0]?.value as List<List<double>>;
-        final moveProbabilities = MaiaTokenizer.decodePolicyLogits(
+        final moveProbabilities = MaiaTokenizer.decodePolicyLogitsFromUciList(
           logits: rawLogits[0],
-          position: position,
+          legalMovesUci: message.legalMovesUci,
+          isBlack: message.isBlack,
         );
 
         for (final out in outputs) {
           out?.release();
         }
 
-        ratingPoints.add(MaiaRatingPoint(
-          rating: rating,
-          probabilitiesByMove: moveProbabilities,
-        ));
-
-        // Cooperatively yield to Flutter UI event loop so frames can render and gestures are processed
-        if (i < supportedRatings.length - 1) {
-          await Future.delayed(const Duration(milliseconds: 16));
-          if (requestId != _analysisRequestId) {
-            developer.log('MaiaRatingEngine: Stale request ($requestId != $_analysisRequestId). Discarding.', name: 'MaiaRatingEngine');
-            return null;
-          }
-        }
+        ratingMoveProbs[rating] = moveProbabilities;
       }
 
-      // Stable Candidate Selection:
-      // Collect top moves based on peak probability across all 21 ratings and active rating
+      if (aborted) {
+        message.replyPort.send(_WorkerSweepResponse(
+          requestId: message.requestId,
+          success: false,
+          error: 'Aborted: superseded by newer request #$currentActiveRequestId',
+        ));
+      } else {
+        message.replyPort.send(_WorkerSweepResponse(
+          requestId: message.requestId,
+          success: true,
+          ratingMoveProbabilities: ratingMoveProbs,
+        ));
+      }
+    } else if (message == 'dispose') {
+      workerSession?.release();
+      workerSession = null;
+      loadedModelPath = null;
+      workerReceivePort.close();
+    }
+  });
+}
+
+/// Service responsible for executing rating-conditioned Maia neural network sweeps.
+///
+/// Implements the official Maia-3 model contract (CSSLab / ICLR 2026).
+/// Runs all heavy ONNX inference in a dedicated background worker isolate
+/// so the Flutter UI thread never stutters, drops frames, or hangs.
+class MaiaRatingEngine {
+  static final MaiaRatingEngine _instance = MaiaRatingEngine._internal();
+  factory MaiaRatingEngine() => _instance;
+  MaiaRatingEngine._internal();
+
+  Isolate? _workerIsolate;
+  SendPort? _workerSendPort;
+  String? _loadedModelPath;
+  int _analysisRequestId = 0;
+  bool _isComputing = false;
+
+  bool get isComputing => _isComputing;
+  bool get isModelLoaded => _workerSendPort != null && _loadedModelPath != null;
+
+  static const List<int> supportedRatings = [
+    600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500,
+    1600, 1700, 1800, 1900, 2000, 2100, 2200, 2300, 2400, 2500, 2600
+  ];
+
+  /// Spawns the worker isolate if not running and loads the ONNX runtime model session.
+  /// Guarantees: Model loading happens ONCE and is reused across all position changes.
+  Future<bool> ensureModelLoaded(String modelPath) async {
+    if (modelPath.contains('.download')) {
+      developer.log(
+        'MaiaRatingEngine: Refusing to load temporary download path: $modelPath',
+        name: 'MaiaRatingEngine',
+        level: 900,
+      );
+      return false;
+    }
+
+    if (_workerSendPort != null && _loadedModelPath == modelPath) {
+      return true; // Already loaded! Reuse existing session.
+    }
+
+    final file = File(modelPath);
+    if (!file.existsSync() || file.lengthSync() < 1000000) {
+      return false;
+    }
+
+    try {
+      // Spawn worker isolate if not yet spawned
+      if (_workerIsolate == null || _workerSendPort == null) {
+        final handshakePort = ReceivePort();
+        _workerIsolate = await Isolate.spawn(_maiaWorkerEntryPoint, handshakePort.sendPort);
+        _workerSendPort = await handshakePort.first as SendPort;
+      }
+
+      // Request worker to load ONNX model
+      final replyPort = ReceivePort();
+      _workerSendPort!.send(_WorkerInitMessage(replyPort.sendPort, modelPath));
+      final loaded = await replyPort.first as bool;
+      if (loaded) {
+        _loadedModelPath = modelPath;
+        if (kDebugMode) {
+          developer.log('MaiaRatingEngine: Model session loaded in background isolate from $modelPath', name: 'MaiaRatingEngine');
+        }
+        return true;
+      } else {
+        return false;
+      }
+    } catch (e, stack) {
+      developer.log(
+        'MaiaRatingEngine: Failed to spawn worker isolate or load session: $e',
+        name: 'MaiaRatingEngine',
+        error: e,
+        stackTrace: stack,
+      );
+      return false;
+    }
+  }
+
+  /// Evaluates the position across all 21 rating conditions in the background isolate.
+  ///
+  /// Guarantees:
+  /// 1. Zero UI main-thread blocking (runs completely on background worker thread).
+  /// 2. Request ID and revision protection to immediately discard stale requests.
+  /// 3. Returns genuine model output snapshot without fabricating data.
+  Future<MaiaRatingSweepSnapshot?> computeSweep({
+    required ChessPosition position,
+    required int positionRevision,
+    required int activeRating,
+    required String modelPath,
+    List<String> priorityUciMoves = const [],
+  }) async {
+    final requestId = ++_analysisRequestId;
+    final currentFen = position.toFen();
+
+    final isLoaded = await ensureModelLoaded(modelPath);
+    if (!isLoaded || _workerSendPort == null) {
+      return null;
+    }
+
+    _isComputing = true;
+    try {
+      // 1. Prepare one-hot board tokens for current position [1, 64, 12]
+      final singleTokens = MaiaTokenizer.tokenizePosition(position);
+      final legalMovesUci = position.legalMoves.map((m) => m.uci).toList();
+      final isBlack = position.turn == PieceColor.black;
+
+      // 2. Dispatch sweep request to background worker isolate
+      final replyPort = ReceivePort();
+      final request = _WorkerSweepRequest(
+        replyPort: replyPort.sendPort,
+        requestId: requestId,
+        fen: currentFen,
+        positionRevision: positionRevision,
+        tokens: singleTokens,
+        legalMovesUci: legalMovesUci,
+        isBlack: isBlack,
+        ratings: supportedRatings,
+        priorityUciMoves: priorityUciMoves,
+      );
+
+      _workerSendPort!.send(request);
+      final response = await replyPort.first as _WorkerSweepResponse;
+
+      // 3. Stale request check: discard if superseded
+      if (requestId != _analysisRequestId || !response.success || response.ratingMoveProbabilities == null) {
+        return null;
+      }
+
+      final ratingMoveProbs = response.ratingMoveProbabilities!;
+
+      // 4. Stable Candidate Move Selection:
+      // Collect top moves based on peak probability across all ratings
       final candidateSet = <String>{};
 
       // Priority moves (explicit user highlights or played move, limit to at most 2)
@@ -188,8 +311,9 @@ class MaiaRatingEngine {
 
       // Calculate peak probability for each move across all 21 ratings
       final peakProbs = <String, double>{};
-      for (final rp in ratingPoints) {
-        for (final entry in rp.probabilitiesByMove.entries) {
+      for (final rating in supportedRatings) {
+        final probs = ratingMoveProbs[rating] ?? {};
+        for (final entry in probs.entries) {
           final current = peakProbs[entry.key] ?? 0.0;
           if (entry.value > current) {
             peakProbs[entry.key] = entry.value;
@@ -201,34 +325,24 @@ class MaiaRatingEngine {
       final sortedByPeak = peakProbs.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
 
-      if (kDebugMode) {
-        developer.log(
-          'Maia model top moves by peak probability: '
-          '${sortedByPeak.take(8).map((e) => '${e.key}: ${(e.value * 100).toStringAsFixed(1)}%').join(', ')}',
-          name: 'MaiaRatingEngine',
-        );
-      }
-
       for (final entry in sortedByPeak) {
         if (candidateSet.length >= MovesByRatingDataset.palette.length) break;
         candidateSet.add(entry.key);
       }
 
       final candidateMoves = candidateSet.toList();
-      if (kDebugMode) {
-        developer.log('Candidate moves chosen: $candidateMoves', name: 'MaiaRatingEngine');
-      }
 
-      // Build continuous MoveRatingCurve series for each candidate move across all 21 ratings
+      // 5. Build continuous MoveRatingCurve series for each candidate move across all 21 ratings
       final seriesList = <MoveRatingCurve>[];
       for (int i = 0; i < candidateMoves.length; i++) {
         final uci = candidateMoves[i];
         final color = MovesByRatingDataset.palette[i % MovesByRatingDataset.palette.length];
-        
+
         final points = <MoveRatingPoint>[];
-        for (final rp in ratingPoints) {
-          final prob = rp.probabilityForMove(uci) * 100.0; // 0.0 to 100.0%
-          points.add(MoveRatingPoint(rating: rp.rating, probability: prob));
+        for (final rating in supportedRatings) {
+          final probs = ratingMoveProbs[rating] ?? {};
+          final prob = (probs[uci] ?? 0.0) * 100.0; // 0.0 to 100.0%
+          points.add(MoveRatingPoint(rating: rating, probability: prob));
         }
 
         // Format SAN string from current position
@@ -270,13 +384,17 @@ class MaiaRatingEngine {
       developer.log('MaiaRatingEngine: Inference error: $e', name: 'MaiaRatingEngine', error: e, stackTrace: stack);
       return null;
     } finally {
-      _isComputing = false;
+      if (requestId == _analysisRequestId) {
+        _isComputing = false;
+      }
     }
   }
 
   void dispose() {
-    _session?.release();
-    _session = null;
+    _workerSendPort?.send('dispose');
+    _workerIsolate?.kill(priority: Isolate.immediate);
+    _workerIsolate = null;
+    _workerSendPort = null;
     _loadedModelPath = null;
   }
 }
