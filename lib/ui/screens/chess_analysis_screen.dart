@@ -366,7 +366,7 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
           fen: currentFen,
           positionRevision: currentRev,
           supportedRatings: MaiaRatingEngine.supportedRatings,
-          curves: _movesByRatingDataset?.fen == currentFen ? (_movesByRatingDataset?.curves ?? const []) : const [],
+          curves: _movesByRatingDataset?.curves ?? const [],
           activeRating: _activeRating,
           isComputing: true,
           isModelInstalled: true,

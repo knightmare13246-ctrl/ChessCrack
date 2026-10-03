@@ -8,6 +8,7 @@ import 'package:nibbler_chess/models/maia_dual_analysis.dart';
 import 'package:nibbler_chess/services/engine_download_service.dart';
 import 'package:nibbler_chess/services/maia3_model_paths.dart';
 import 'package:nibbler_chess/services/maia_rating_engine.dart';
+import 'package:nibbler_chess/services/maia_tokenizer.dart';
 import 'package:nibbler_chess/ui/widgets/maia_stockfish_comparison_section.dart';
 import 'package:nibbler_chess/ui/widgets/moves_by_rating_chart.dart';
 
@@ -499,7 +500,7 @@ void main() {
       expect(find.text('22.5%'), findsOneWidget);
 
       // Verify Stockfish engine column header & candidate moves with eval
-      expect(find.text('Stockfish 19: Engine Moves'), findsOneWidget);
+      expect(find.text('SF 19: Engine Moves'), findsOneWidget);
       expect(find.text('d18'), findsOneWidget);
       expect(find.text('+0.27'), findsOneWidget);
       expect(find.text('+0.25'), findsOneWidget);
@@ -521,6 +522,175 @@ void main() {
       await tester.tap(find.text('Maia 1500'));
       await tester.pumpAndSettle();
       expect(selectedRating, equals(1500));
+    });
+
+    testWidgets('MaiaStockfishComparisonSection enforces side-by-side two-column table in narrow portrait (320px)', (WidgetTester tester) async {
+      const dataset = MovesByRatingDataset(
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        positionRevision: 1,
+        supportedRatings: [1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900],
+        curves: [
+          MoveRatingCurve(
+            uciMove: 'e2e4',
+            sanMove: 'e4',
+            curveColor: Color(0xFF4CAF50),
+            points: [MoveRatingPoint(rating: 1200, probability: 65.1)],
+          ),
+          MoveRatingCurve(
+            uciMove: 'd2d4',
+            sanMove: 'd4',
+            curveColor: Color(0xFFFFA726),
+            points: [MoveRatingPoint(rating: 1200, probability: 22.5)],
+          ),
+        ],
+        activeRating: 1200,
+      );
+
+      final analysis = PositionAnalysis(
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        engineName: 'Stockfish 19',
+        depth: 18,
+        pvLines: [
+          PvLine(
+            multipv: 1,
+            scoreCp: 27,
+            winPercentage: 54.0,
+            whiteWinPercentage: 54.0,
+            depth: 18,
+            nodes: 50000,
+            nps: 1500000,
+            movesUci: ['g1f3'],
+            pvMoves: const [],
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 320, // Strict narrow portrait viewport
+                child: MaiaStockfishComparisonSection(
+                  analysis: analysis,
+                  movesByRatingData: dataset,
+                  activeRating: 1200,
+                  currentPosition: ChessPosition.initial(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final maiaHeaderFinder = find.text('Maia 1200: Human Moves');
+      final sfHeaderFinder = find.text('SF 19: Engine Moves');
+
+      expect(maiaHeaderFinder, findsOneWidget);
+      expect(sfHeaderFinder, findsOneWidget);
+
+      final maiaTopLeft = tester.getTopLeft(maiaHeaderFinder);
+      final sfTopLeft = tester.getTopLeft(sfHeaderFinder);
+
+      // CRITICAL REQUIREMENT: Maia and Stockfish are side-by-side, NOT stacked vertically
+      // Vertical tops must align horizontally
+      expect(maiaTopLeft.dy, equals(sfTopLeft.dy));
+      // Maia must be horizontally to the left of Stockfish
+      expect(maiaTopLeft.dx, lessThan(sfTopLeft.dx));
+    });
+
+    testWidgets('MaiaStockfishComparisonSection table percentages mathematically match MoveRatingCurve values', (WidgetTester tester) async {
+      const activeRating = 1600;
+      final curves = [
+        const MoveRatingCurve(
+          uciMove: 'e2e4',
+          sanMove: 'e4',
+          curveColor: Color(0xFF4CAF50),
+          points: [
+            MoveRatingPoint(rating: 1200, probability: 55.4),
+            MoveRatingPoint(rating: 1600, probability: 62.3),
+            MoveRatingPoint(rating: 2000, probability: 48.1),
+          ],
+        ),
+        const MoveRatingCurve(
+          uciMove: 'd2d4',
+          sanMove: 'd4',
+          curveColor: Color(0xFFFFA726),
+          points: [
+            MoveRatingPoint(rating: 1200, probability: 28.1),
+            MoveRatingPoint(rating: 1600, probability: 24.7),
+            MoveRatingPoint(rating: 2000, probability: 31.9),
+          ],
+        ),
+      ];
+
+      final dataset = MovesByRatingDataset(
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        positionRevision: 1,
+        supportedRatings: const [1200, 1600, 2000],
+        curves: curves,
+        activeRating: activeRating,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MaiaStockfishComparisonSection(
+              analysis: null,
+              movesByRatingData: dataset,
+              activeRating: activeRating,
+              currentPosition: ChessPosition.initial(),
+            ),
+          ),
+        ),
+      );
+
+      // For every curve, the rendered percentage in the table MUST match probabilityAtRating exactly
+      for (final curve in curves) {
+        final expectedProb = curve.probabilityAtRating(activeRating)!;
+        final expectedText = '${expectedProb.toStringAsFixed(1)}%';
+        expect(find.text(expectedText), findsOneWidget);
+      }
+    });
+
+    test('MaiaTokenizer decodes policy logits with legal move masking and probability sum = 1.0', () {
+      final posWhite = ChessPosition.initial();
+      final legalMovesWhite = posWhite.legalMoves;
+      expect(legalMovesWhite.length, equals(20)); // 20 opening legal moves for White
+
+      // Create synthetic logits (length 4352)
+      final logits = List<double>.generate(4352, (i) => (i % 10).toDouble());
+      final decodedWhite = MaiaTokenizer.decodePolicyLogits(
+        logits: logits,
+        position: posWhite,
+      );
+
+      // Decoded output must contain only legal moves
+      expect(decodedWhite.length, equals(legalMovesWhite.length));
+      for (final move in legalMovesWhite) {
+        expect(decodedWhite.containsKey(move.uci), isTrue);
+      }
+
+      // Sum of probabilities must equal 1.0 within floating point precision
+      final sumProbsWhite = decodedWhite.values.reduce((a, b) => a + b);
+      expect(sumProbsWhite, closeTo(1.0, 1e-5));
+
+      // Test with Black to move (after 1. e4)
+      final posBlack = ChessPosition.fromFen('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1');
+      expect(posBlack.turn, equals(PieceColor.black));
+
+      final decodedBlack = MaiaTokenizer.decodePolicyLogits(
+        logits: logits,
+        position: posBlack,
+      );
+
+      expect(decodedBlack.length, equals(posBlack.legalMoves.length));
+      for (final move in posBlack.legalMoves) {
+        expect(decodedBlack.containsKey(move.uci), isTrue);
+      }
+
+      final sumProbsBlack = decodedBlack.values.reduce((a, b) => a + b);
+      expect(sumProbsBlack, closeTo(1.0, 1e-5));
     });
   });
 }

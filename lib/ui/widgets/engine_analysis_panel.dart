@@ -299,7 +299,9 @@ class EngineAnalysisPanel extends StatelessWidget {
                   children: [
                     // 1. Maia vs Stockfish Comparison Section (Maiachess.com workbench layout)
                     if (movesByRatingData != null &&
-                        (!movesByRatingData!.isModelInstalled || movesByRatingData!.curves.isNotEmpty)) ...[
+                        (!movesByRatingData!.isModelInstalled ||
+                            movesByRatingData!.curves.isNotEmpty ||
+                            movesByRatingData!.isComputing)) ...[
                       MaiaStockfishComparisonSection(
                         analysis: analysis,
                         movesByRatingData: movesByRatingData,
@@ -315,7 +317,9 @@ class EngineAnalysisPanel extends StatelessWidget {
 
                     // 2. Interactive Moves by Rating Chart (Maiachess.com analysis style)
                     if (movesByRatingData != null &&
-                        (!movesByRatingData!.isModelInstalled || movesByRatingData!.curves.isNotEmpty)) ...[
+                        (!movesByRatingData!.isModelInstalled ||
+                            movesByRatingData!.curves.isNotEmpty ||
+                            movesByRatingData!.isComputing)) ...[
                       RepaintBoundary(
                         child: MovesByRatingChart(
                           dataset: movesByRatingData!,

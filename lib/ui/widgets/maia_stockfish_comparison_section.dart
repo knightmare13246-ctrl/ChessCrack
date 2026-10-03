@@ -6,7 +6,7 @@ import '../../models/maia_dual_analysis.dart';
 
 /// A dedicated comparison widget matching the official Maia chess workbench:
 /// Displays "Maia [Elo] ▾: Human Moves" alongside "SF [Ver] ▾: Engine Moves",
-/// allowing side-by-side or stacked candidate evaluation with genuine percentages and eval scores.
+/// strictly side-by-side in both portrait and landscape.
 class MaiaStockfishComparisonSection extends StatefulWidget {
   final PositionAnalysis? analysis;
   final MovesByRatingDataset? movesByRatingData;
@@ -56,7 +56,7 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFF282833), width: 1),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -115,30 +115,21 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
           ),
 
           if (_isExpanded) ...[
-            const SizedBox(height: 8),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final isWide = constraints.maxWidth >= 380;
-                if (isWide) {
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: _buildMaiaColumn(context)),
-                      const SizedBox(width: 8),
-                      Expanded(child: _buildEngineColumn(context)),
-                    ],
-                  );
-                } else {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildMaiaColumn(context),
-                      const SizedBox(height: 8),
-                      _buildEngineColumn(context),
-                    ],
-                  );
-                }
-              },
+            const SizedBox(height: 6),
+            // Always side-by-side in both Portrait and Landscape
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: _buildMaiaColumn(context)),
+                  Container(
+                    width: 1,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    color: const Color(0xFF282835),
+                  ),
+                  Expanded(child: _buildEngineColumn(context)),
+                ],
+              ),
             ),
           ],
         ],
@@ -176,78 +167,84 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: const Color(0xFF2E2E3C), width: 0.8),
       ),
-      padding: const EdgeInsets.all(7),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Column Header with Maia Elo Dropdown Selector
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Flexible(
-                child: Text(
-                  'Maia ${widget.activeRating}: Human Moves',
-                  style: const TextStyle(
-                    color: Color(0xFFFE7F6D),
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              PopupMenuButton<int>(
-                initialValue: widget.activeRating,
-                tooltip: 'Select Maia Rating',
-                onSelected: (int r) => widget.onRatingChanged?.call(r),
-                color: const Color(0xFF22222C),
-                padding: EdgeInsets.zero,
-                icon: const Icon(Icons.arrow_drop_down, size: 18, color: Color(0xFFFE7F6D)),
-                itemBuilder: (context) {
-                  return widget.availableRatings.map((rating) {
-                    final isCur = rating == widget.activeRating;
-                    return PopupMenuItem<int>(
-                      value: rating,
-                      height: 32,
-                      child: Text(
-                        'Maia $rating',
-                        style: TextStyle(
-                          color: isCur ? const Color(0xFFFE7F6D) : Colors.white,
-                          fontWeight: isCur ? FontWeight.bold : FontWeight.normal,
-                          fontSize: 11.5,
-                          fontFamily: 'monospace',
-                        ),
+          SizedBox(
+            height: 24,
+            child: PopupMenuButton<int>(
+              initialValue: widget.activeRating,
+              tooltip: 'Select Maia Rating',
+              onSelected: (int r) => widget.onRatingChanged?.call(r),
+              color: const Color(0xFF22222C),
+              padding: EdgeInsets.zero,
+              itemBuilder: (context) {
+                return widget.availableRatings.map((rating) {
+                  final isCur = rating == widget.activeRating;
+                  return PopupMenuItem<int>(
+                    value: rating,
+                    height: 32,
+                    child: Text(
+                      'Maia $rating',
+                      style: TextStyle(
+                        color: isCur ? const Color(0xFFFE7F6D) : Colors.white,
+                        fontWeight: isCur ? FontWeight.bold : FontWeight.normal,
+                        fontSize: 11,
+                        fontFamily: 'monospace',
                       ),
-                    );
-                  }).toList();
-                },
+                    ),
+                  );
+                }).toList();
+              },
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Maia ${widget.activeRating}: Human Moves',
+                      style: const TextStyle(
+                        color: Color(0xFFFE7F6D),
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const Icon(Icons.arrow_drop_down, size: 16, color: Color(0xFFFE7F6D)),
+                ],
               ),
-            ],
+            ),
           ),
 
           const SizedBox(height: 2),
           // Subheader: move | prob
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'move',
-                style: TextStyle(
-                  color: Colors.white38,
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.bold,
+          const SizedBox(
+            height: 14,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'move',
+                  style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: 9.0,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-              Text(
-                'prob',
-                style: TextStyle(
-                  color: Colors.white38,
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.bold,
+                Text(
+                  'prob',
+                  style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: 9.0,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const Divider(color: Color(0xFF2C2C3A), height: 8),
+          const Divider(color: Color(0xFF2C2C3A), height: 6, thickness: 0.8),
 
           // Items List
           if (humanItems.isEmpty)
@@ -256,11 +253,12 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
               child: Center(
                 child: Text(
                   dataset?.isComputing == true
-                      ? 'Calculating human moves...'
+                      ? 'Calculating...'
                       : (dataset?.isModelInstalled == false
-                          ? 'Maia model not installed'
+                          ? 'Model not installed'
                           : 'No candidate moves'),
                   style: const TextStyle(color: Colors.white38, fontSize: 10),
+                  textAlign: TextAlign.center,
                 ),
               ),
             )
@@ -274,8 +272,9 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
                   if (move != null) widget.onPlayMove?.call(move);
                 },
                 child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 1.5),
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2.5),
+                  height: 22,
+                  margin: const EdgeInsets.symmetric(vertical: 1),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
                   decoration: BoxDecoration(
                     color: isHighlighted
                         ? item.color.withValues(alpha: 0.25)
@@ -293,20 +292,20 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
-                            width: 6,
-                            height: 6,
+                            width: 5,
+                            height: 5,
                             decoration: BoxDecoration(
                               color: item.color,
                               shape: BoxShape.circle,
                             ),
                           ),
-                          const SizedBox(width: 5),
+                          const SizedBox(width: 4),
                           Text(
                             item.san,
                             style: TextStyle(
                               color: item.color,
                               fontWeight: FontWeight.bold,
-                              fontSize: 11,
+                              fontSize: 10.5,
                               fontFamily: 'monospace',
                             ),
                           ),
@@ -317,7 +316,7 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
-                          fontSize: 10.5,
+                          fontSize: 10,
                           fontFamily: 'monospace',
                         ),
                       ),
@@ -342,69 +341,77 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: const Color(0xFF1F3242), width: 0.8),
       ),
-      padding: const EdgeInsets.all(7),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Column Header: Engine Name + Depth
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Flexible(
-                child: Text(
-                  '$engineName: Engine Moves',
-                  style: const TextStyle(
-                    color: Color(0xFF42A5F5),
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (depth != null && depth > 0)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1B2A38),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
+          SizedBox(
+            height: 24,
+            child: Row(
+              children: [
+                Expanded(
                   child: Text(
-                    'd$depth',
+                    _formatEngineHeader(engineName),
                     style: const TextStyle(
-                      color: Color(0xFF90CAF9),
-                      fontSize: 9.5,
+                      color: Color(0xFF42A5F5),
+                      fontSize: 10.5,
                       fontWeight: FontWeight.bold,
-                      fontFamily: 'monospace',
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (depth != null && depth > 0) ...[
+                  const SizedBox(width: 3),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 3.5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1B2A38),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: Text(
+                      'd$depth',
+                      style: const TextStyle(
+                        color: Color(0xFF90CAF9),
+                        fontSize: 9.0,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'monospace',
+                      ),
                     ),
                   ),
-                ),
-            ],
+                ],
+              ],
+            ),
           ),
 
           const SizedBox(height: 2),
           // Subheader: move | eval
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'move',
-                style: TextStyle(
-                  color: Colors.white38,
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.bold,
+          const SizedBox(
+            height: 14,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'move',
+                  style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: 9.0,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-              Text(
-                'eval',
-                style: TextStyle(
-                  color: Colors.white38,
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.bold,
+                Text(
+                  'eval',
+                  style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: 9.0,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const Divider(color: Color(0xFF1E3547), height: 8),
+          const Divider(color: Color(0xFF1E3547), height: 6, thickness: 0.8),
 
           // Engine lines
           if (lines.isEmpty)
@@ -412,8 +419,9 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
               padding: EdgeInsets.symmetric(vertical: 8),
               child: Center(
                 child: Text(
-                  'Awaiting engine evaluation...',
+                  'Awaiting eval...',
                   style: TextStyle(color: Colors.white38, fontSize: 10),
+                  textAlign: TextAlign.center,
                 ),
               ),
             )
@@ -424,6 +432,7 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
                   ? line.pvMoves.first.figurineSan
                   : (line.movesUci.isNotEmpty ? line.movesUci.first : '');
               final isHighlighted = widget.highlightedUciMove == firstUci;
+              final evalStr = _formatEvaluation(line);
 
               return InkWell(
                 onTap: () {
@@ -434,8 +443,9 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
                   }
                 },
                 child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 1.5),
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2.5),
+                  height: 22,
+                  margin: const EdgeInsets.symmetric(vertical: 1),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
                   decoration: BoxDecoration(
                     color: isHighlighted
                         ? const Color(0xFF42A5F5).withValues(alpha: 0.25)
@@ -454,28 +464,22 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
-                          fontSize: 11,
+                          fontSize: 10.5,
                           fontFamily: 'monospace',
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        padding: const EdgeInsets.symmetric(horizontal: 3.5, vertical: 1),
                         decoration: BoxDecoration(
                           color: const Color(0xFF1E3547),
                           borderRadius: BorderRadius.circular(3),
                         ),
                         child: Text(
-                          line.evaluation != null
-                              ? line.evaluation!.formattedScore
-                              : (line.scoreMate != null
-                                  ? (line.scoreMate! > 0 ? '+M${line.scoreMate!}' : '-M${line.scoreMate!.abs()}')
-                                  : (line.scoreCp != null
-                                      ? '${line.scoreCp! >= 0 ? '+' : ''}${(line.scoreCp! / 100.0).toStringAsFixed(2)}'
-                                      : line.formattedScore)),
+                          evalStr,
                           style: const TextStyle(
                             color: Color(0xFF90CAF9),
                             fontWeight: FontWeight.bold,
-                            fontSize: 10,
+                            fontSize: 9.5,
                             fontFamily: 'monospace',
                           ),
                         ),
@@ -488,6 +492,29 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
         ],
       ),
     );
+  }
+
+  String _formatEngineHeader(String engineName) {
+    final trimmed = engineName.trim();
+    if (trimmed.startsWith('Stockfish')) {
+      final suffix = trimmed.substring('Stockfish'.length).trim();
+      return suffix.isNotEmpty ? 'SF $suffix: Engine Moves' : 'SF: Engine Moves';
+    }
+    return '$trimmed: Engine Moves';
+  }
+
+  String _formatEvaluation(PvLine line) {
+    if (line.evaluation != null) {
+      return line.evaluation!.formattedScore;
+    }
+    if (line.scoreMate != null) {
+      return line.scoreMate! > 0 ? '+M${line.scoreMate!}' : '-M${line.scoreMate!.abs()}';
+    }
+    if (line.scoreCp != null) {
+      final cpVal = line.scoreCp! / 100.0;
+      return '${cpVal >= 0 ? '+' : ''}${cpVal.toStringAsFixed(2)}';
+    }
+    return line.formattedScore;
   }
 }
 
