@@ -337,6 +337,7 @@ class _EngineSettingsDialogState extends State<EngineSettingsDialog> {
               threads: _threads,
               hashSizeMb: _hashSizeMb,
               multiPv: _multiPv,
+              arrowFilterOthers: ArrowFilterOthers.all,
               lc0Backend: _lc0Backend,
               weightsPath: _weightsPath,
               selectedMaiaId: _selectedMaiaId,

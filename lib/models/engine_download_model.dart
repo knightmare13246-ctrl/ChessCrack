@@ -30,7 +30,7 @@ class EngineArtifactInfo {
   final String officialSourceUrl;
   final String downloadUrl;
   String localExecutablePath;
-  final String metadataPath;
+  String metadataPath;
   final int expectedSizeBytes;
   final String abi;
   DownloadStatus status;
@@ -91,7 +91,7 @@ class MaiaModelInfo {
   final String officialSourceUrl;
   final String downloadUrl;
   final String checksum; // "unavailable" if not provided by upstream
-  final String localPath;
+  String localPath;
   final String metadataPath;
   final int estimatedSizeBytes;
   final String credit;
@@ -230,14 +230,16 @@ class EngineStorageSummary {
   final int stockfishBytes;
   final int lc0Bytes;
   final int maiaBytes;
+  final int maia3Bytes;
 
   const EngineStorageSummary({
     this.stockfishBytes = 0,
     this.lc0Bytes = 0,
     this.maiaBytes = 0,
+    this.maia3Bytes = 0,
   });
 
-  int get totalBytes => stockfishBytes + lc0Bytes + maiaBytes;
+  int get totalBytes => stockfishBytes + lc0Bytes + maiaBytes + maia3Bytes;
 
   static String formatBytes(int bytes) {
     if (bytes <= 0) return '0 MB';
@@ -249,3 +251,4 @@ class EngineStorageSummary {
     return '${mb.toStringAsFixed(1)} MB';
   }
 }
+

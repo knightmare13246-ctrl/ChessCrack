@@ -43,6 +43,19 @@ class EngineDownloadService extends ChangeNotifier {
     expectedSizeBytes: 40 * 1024 * 1024,
   );
 
+  EngineArtifactInfo maiaRatingModelInfo = EngineArtifactInfo(
+    id: 'maia3_rating_conditioned',
+    name: 'Maia-3 Rating-Conditioned Model',
+    version: '3.0 (CSSLab / ICLR 2026)',
+    filename: 'maia3_simplified.onnx',
+    officialSourceUrl: 'https://github.com/CSSLab/maia-platform-frontend',
+    downloadUrl: 'https://raw.githubusercontent.com/CSSLab/maia-platform-frontend/main/public/maia3/maia3_simplified.onnx',
+    localExecutablePath: '',
+    metadataPath: '',
+    abi: 'all',
+    expectedSizeBytes: 44 * 1024 * 1024,
+  );
+
   final Map<String, MaiaModelInfo> maiaModels = {};
 
   final Map<String, HttpClientRequest> _activeRequests = {};
@@ -52,6 +65,7 @@ class EngineDownloadService extends ChangeNotifier {
     if (!_initialized) return false;
     return stockfishInfo.isDownloading ||
         lc0Info.isDownloading ||
+        maiaRatingModelInfo.isDownloading ||
         maiaModels.values.any((m) => m.isDownloading);
   }
 
@@ -169,6 +183,15 @@ class EngineDownloadService extends ChangeNotifier {
       maiaModels[id] = modelInfo;
     }
 
+    // 4. Official Maia-3 Rating-Conditioned Model (for Moves by Rating)
+    final maia3Dir = Directory('${baseDir.path}/models/maia3');
+    if (!maia3Dir.existsSync()) maia3Dir.createSync(recursive: true);
+    final maia3Path = '${maia3Dir.path}/maia3_simplified.onnx';
+    final maia3Meta = '${maia3Dir.path}/metadata.json';
+    maiaRatingModelInfo.localExecutablePath = maia3Path;
+    maiaRatingModelInfo.metadataPath = maia3Meta;
+    _checkMaiaRatingModelInstalledStatus();
+
     _initialized = true;
     notifyListeners();
   }
@@ -198,10 +221,57 @@ class EngineDownloadService extends ChangeNotifier {
     if (file.existsSync() && file.lengthSync() > 100000) {
       info.status = DownloadStatus.installed;
       info.installedSizeBytes = file.lengthSync();
-    } else {
-      info.status = DownloadStatus.notInstalled;
-      info.installedSizeBytes = 0;
+      return;
     }
+
+    // Check well-known local device locations (e.g. /data/local/tmp/maia-*.pb.gz or /sdcard/maia-*.pb.gz)
+    final fallbackPaths = [
+      '/sdcard/Android/data/org.chesscrack.app/files/${info.filename}',
+      '/data/local/tmp/${info.filename}',
+      '/sdcard/${info.filename}',
+      '/sdcard/Download/${info.filename}',
+    ];
+    for (final p in fallbackPaths) {
+      final f = File(p);
+      if (f.existsSync() && f.lengthSync() > 100000) {
+        info.status = DownloadStatus.installed;
+        info.installedSizeBytes = f.lengthSync();
+        info.localPath = p;
+        return;
+      }
+    }
+
+    info.status = DownloadStatus.notInstalled;
+    info.installedSizeBytes = 0;
+  }
+
+  void _checkMaiaRatingModelInstalledStatus() {
+    final file = File(maiaRatingModelInfo.localExecutablePath);
+    if (file.existsSync() && file.lengthSync() > 1000000) {
+      maiaRatingModelInfo.status = DownloadStatus.installed;
+      maiaRatingModelInfo.installedSizeBytes = file.lengthSync();
+      return;
+    }
+
+    final fallbackPaths = [
+      'maia3_simplified.onnx',
+      '/sdcard/Android/data/org.chesscrack.app/files/maia3_simplified.onnx',
+      '/data/local/tmp/maia3_simplified.onnx',
+      '/sdcard/maia3_simplified.onnx',
+      '/sdcard/Download/maia3_simplified.onnx',
+    ];
+    for (final p in fallbackPaths) {
+      final f = File(p);
+      if (f.existsSync() && f.lengthSync() > 1000000) {
+        maiaRatingModelInfo.status = DownloadStatus.installed;
+        maiaRatingModelInfo.installedSizeBytes = f.lengthSync();
+        maiaRatingModelInfo.localExecutablePath = p;
+        return;
+      }
+    }
+
+    maiaRatingModelInfo.status = DownloadStatus.notInstalled;
+    maiaRatingModelInfo.installedSizeBytes = 0;
   }
 
   String _resolveStockfishUrl(String abi) {
@@ -230,6 +300,7 @@ class EngineDownloadService extends ChangeNotifier {
     for (final m in maiaModels.values) {
       _checkMaiaInstalledStatus(m);
     }
+    _checkMaiaRatingModelInstalledStatus();
     notifyListeners();
   }
 
@@ -239,6 +310,10 @@ class EngineDownloadService extends ChangeNotifier {
     } else {
       return lc0Info.isInstalled;
     }
+  }
+
+  List<MaiaModelInfo> getInstalledMaiaModels() {
+    return maiaModels.values.where((m) => m.isInstalled).toList();
   }
 
   MaiaModelInfo? getMaiaModel(String id) {
@@ -252,10 +327,12 @@ class EngineDownloadService extends ChangeNotifier {
     for (final m in maiaModels.values) {
       if (m.isInstalled) maia += m.installedSizeBytes;
     }
+    int maia3 = maiaRatingModelInfo.isInstalled ? maiaRatingModelInfo.installedSizeBytes : 0;
     return EngineStorageSummary(
       stockfishBytes: sf,
       lc0Bytes: lc,
       maiaBytes: maia,
+      maia3Bytes: maia3,
     );
   }
 
@@ -546,6 +623,98 @@ class EngineDownloadService extends ChangeNotifier {
     }
   }
 
+  bool get isMaiaRatingModelInstalled => maiaRatingModelInfo.isInstalled;
+
+  Future<bool> downloadMaiaRatingModel({Function(double progress, String status)? onProgress}) async {
+    if (maiaRatingModelInfo.isInstalled) return true;
+    if (maiaRatingModelInfo.isDownloading && _activeCompleters.containsKey(maiaRatingModelInfo.id)) {
+      return _activeCompleters[maiaRatingModelInfo.id]!.future;
+    }
+
+    final completer = Completer<bool>();
+    _activeCompleters[maiaRatingModelInfo.id] = completer;
+
+    maiaRatingModelInfo.status = DownloadStatus.downloading;
+    maiaRatingModelInfo.progress = 0.0;
+    maiaRatingModelInfo.bytesReceived = 0;
+    maiaRatingModelInfo.errorMessage = null;
+    notifyListeners();
+
+    final targetFile = File(maiaRatingModelInfo.localExecutablePath);
+    final tempFile = File('${maiaRatingModelInfo.localExecutablePath}.download');
+
+    try {
+      final success = await _downloadFile(
+        maiaRatingModelInfo.id,
+        maiaRatingModelInfo.downloadUrl,
+        tempFile,
+        (progress, received, total) {
+          maiaRatingModelInfo.progress = progress;
+          maiaRatingModelInfo.bytesReceived = received;
+          maiaRatingModelInfo.totalBytes = total;
+          onProgress?.call(progress, 'Downloading: ${(progress * 100).toStringAsFixed(1)}%');
+          notifyListeners();
+        },
+      );
+
+      if (!success) {
+        throw Exception('Download failed or cancelled');
+      }
+
+      maiaRatingModelInfo.status = DownloadStatus.verifying;
+      notifyListeners();
+
+      // Check ONNX model file integrity (must be at least 1MB)
+      final bytes = await tempFile.readAsBytes();
+      if (bytes.length < 1000000) {
+        throw Exception('Downloaded ONNX model file is corrupted or incomplete');
+      }
+
+      if (targetFile.existsSync()) targetFile.deleteSync();
+      await tempFile.rename(targetFile.path);
+
+      final meta = {
+        'id': maiaRatingModelInfo.id,
+        'name': maiaRatingModelInfo.name,
+        'version': maiaRatingModelInfo.version,
+        'officialSourceUrl': maiaRatingModelInfo.officialSourceUrl,
+        'downloadUrl': maiaRatingModelInfo.downloadUrl,
+        'localPath': targetFile.path,
+        'installedDate': DateTime.now().toIso8601String(),
+        'fileSize': targetFile.lengthSync(),
+      };
+      await File(maiaRatingModelInfo.metadataPath).writeAsString(jsonEncode(meta));
+
+      maiaRatingModelInfo.status = DownloadStatus.installed;
+      maiaRatingModelInfo.installedSizeBytes = targetFile.lengthSync();
+      maiaRatingModelInfo.progress = 1.0;
+      notifyListeners();
+      completer.complete(true);
+      return true;
+    } catch (e) {
+      if (tempFile.existsSync()) tempFile.deleteSync();
+      maiaRatingModelInfo.status = maiaRatingModelInfo.status == DownloadStatus.cancelled
+          ? DownloadStatus.cancelled
+          : DownloadStatus.error;
+      maiaRatingModelInfo.errorMessage = e.toString();
+      notifyListeners();
+      completer.complete(false);
+      return false;
+    } finally {
+      _activeRequests.remove(maiaRatingModelInfo.id);
+      _activeCompleters.remove(maiaRatingModelInfo.id);
+    }
+  }
+
+  Future<void> deleteMaiaRatingModel() async {
+    final file = File(maiaRatingModelInfo.localExecutablePath);
+    if (file.existsSync()) file.deleteSync();
+    final meta = File(maiaRatingModelInfo.metadataPath);
+    if (meta.existsSync()) meta.deleteSync();
+    _checkMaiaRatingModelInstalledStatus();
+    notifyListeners();
+  }
+
   void cancelDownload(String id) {
     if (_activeRequests.containsKey(id)) {
       _activeRequests[id]?.abort();
@@ -557,6 +726,9 @@ class EngineDownloadService extends ChangeNotifier {
     } else if (id == lc0Info.id) {
       lc0Info.status = DownloadStatus.cancelled;
       lc0Info.errorMessage = 'Cancelled by user';
+    } else if (id == maiaRatingModelInfo.id) {
+      maiaRatingModelInfo.status = DownloadStatus.cancelled;
+      maiaRatingModelInfo.errorMessage = 'Cancelled by user';
     } else if (maiaModels.containsKey(id)) {
       maiaModels[id]?.status = DownloadStatus.cancelled;
       maiaModels[id]?.errorMessage = 'Cancelled by user';

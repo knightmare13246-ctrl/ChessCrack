@@ -39,8 +39,12 @@ void main() {
       ),
     );
 
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     await tester.tap(find.text('Open'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('Arrow & Telemetry Settings'), findsOneWidget);
     expect(find.text('ARROWHEAD TYPE (BADGE DISPLAY)'), findsOneWidget);
@@ -49,10 +53,14 @@ void main() {
     expect(find.text('Node %'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.close));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
   });
 
   testWidgets('ArrowSettingsDialog allows selecting Policy mode and updates settings', (WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     final settings = EngineSettings(activeEngine: EngineType.lc0);
     EngineSettings? updatedResult;
     await tester.pumpWidget(
@@ -73,14 +81,17 @@ void main() {
     );
 
     await tester.tap(find.text('Open'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('Policy'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(updatedResult, isNotNull);
     expect(updatedResult!.arrowheadType, equals(ArrowheadType.policy));
 
     await tester.tap(find.byIcon(Icons.close));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
   });
 }

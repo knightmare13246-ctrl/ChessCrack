@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
@@ -8,8 +9,10 @@ import '../models/chess_move.dart';
 import '../models/chess_position.dart';
 import '../models/engine_analysis.dart';
 import '../models/engine_settings.dart';
+import '../models/uci_option.dart';
 import '../utils/score_adapters.dart';
 import '../utils/win_rate_calculator.dart';
+import 'engine_coordinator.dart';
 import 'engine_trace_logger.dart';
 import 'native_engine_runner.dart';
 
@@ -30,6 +33,10 @@ class UciEngineService {
   final ValueNotifier<NormalizedEvaluation> _evaluationNotifier =
       ValueNotifier<NormalizedEvaluation>(NormalizedEvaluation.neutral);
   ValueListenable<NormalizedEvaluation> get evaluationNotifier => _evaluationNotifier;
+
+  final ValueNotifier<PositionAnalysis?> _analysisNotifier =
+      ValueNotifier<PositionAnalysis?>(null);
+  ValueListenable<PositionAnalysis?> get analysisNotifier => _analysisNotifier;
 
   // Engine Activation State (Separate from search state)
   EngineActivationState _activationState = EngineActivationState.enabled;
@@ -109,6 +116,7 @@ class UciEngineService {
   final Map<String, double> _positionPolicyCache = {};
   final Map<String, int> _positionVisitsCache = {};
   final Map<String, double> _positionMlhCache = {};
+  final Map<String, List<PvMoveItem>> _pvParseCache = {};
 
   // Engine diagnostic detection
   String _detectedBackend = 'auto';
@@ -116,6 +124,16 @@ class UciEngineService {
   String _detectedNetwork = 'default';
   String _engineVersion = '';
   String get engineVersion => _engineVersion;
+
+  final Map<String, UciOption> _supportedUciOptions = {};
+  Map<String, UciOption> get supportedUciOptions => Map.unmodifiable(_supportedUciOptions);
+
+  bool get supportsLimitStrength => _supportedUciOptions.containsKey('UCI_LimitStrength');
+  int? get minElo => _supportedUciOptions['UCI_Elo']?.min;
+  int? get maxElo => _supportedUciOptions['UCI_Elo']?.max;
+
+  Completer<String?>? _gameMoveCompleter;
+  Completer<CandidateArrow?>? _hintCompleter;
 
   int _currentHashfull = 0;
   int _currentTbhits = 0;
@@ -134,6 +152,24 @@ class UciEngineService {
 
   Timer? _throttleTimer;
   bool _hasPendingUpdate = false;
+  Timer? _stoppingWatchdogTimer;
+
+  void _armStoppingWatchdog() {
+    _stoppingWatchdogTimer?.cancel();
+    _stoppingWatchdogTimer = Timer(const Duration(milliseconds: 650), () {
+      if (_searchState == AnalysisDataState.stopping) {
+        if (kDebugMode) {
+          developer.log('Stopping watchdog expired - forcing recovery', name: 'UciEngineService');
+        }
+        _handleBestMove('bestmove (none)');
+      }
+    });
+  }
+
+  void _cancelStoppingWatchdog() {
+    _stoppingWatchdogTimer?.cancel();
+    _stoppingWatchdogTimer = null;
+  }
 
   final _analysisController = StreamController<PositionAnalysis>.broadcast();
   Stream<PositionAnalysis> get analysisStream => _analysisController.stream;
@@ -176,10 +212,27 @@ class UciEngineService {
     try {
       final List<String> args = [];
       if (_settings.activeEngine == EngineType.lc0) {
-        if (_settings.weightsPath != null &&
-            _settings.weightsPath!.isNotEmpty &&
-            _settings.weightsPath != '<built in>') {
-          args.add('--weights=${_settings.weightsPath}');
+        String? weights = _settings.weightsPath;
+        if (weights == null || weights.isEmpty || weights == '<built in>' || !File(weights).existsSync()) {
+          // Check standard device fallback paths
+          final fallbackCandidates = [
+            '/sdcard/Android/data/org.chesscrack.app/files/maia-1100.pb.gz',
+            '/sdcard/maia-1100.pb.gz',
+            '/data/local/tmp/maia-1100.pb.gz',
+          ];
+          for (final candidate in fallbackCandidates) {
+            if (File(candidate).existsSync()) {
+              weights = candidate;
+              _settings = _settings.copyWith(weightsPath: candidate);
+              break;
+            }
+          }
+        }
+        if (weights != null &&
+            weights.isNotEmpty &&
+            weights != '<built in>' &&
+            File(weights).existsSync()) {
+          args.add('--weights=$weights');
         }
       }
 
@@ -390,6 +443,11 @@ class UciEngineService {
 
     if (trimmed.startsWith('id name ')) {
       _engineVersion = trimmed.substring(8).trim();
+    } else if (trimmed.startsWith('option name ')) {
+      final opt = UciOption.parse(trimmed);
+      if (opt != null) {
+        _supportedUciOptions[opt.name] = opt;
+      }
     } else if (trimmed == 'uciok') {
       _configureEngineOptions();
       _sendCommand('isready');
@@ -415,6 +473,7 @@ class UciEngineService {
   }
 
   void _handleBestMove(String line, {int? sessionId}) {
+    _cancelStoppingWatchdog();
     if (!_validateStreamLine(sessionId: sessionId ?? _engineSessionId, rawLine: line, isBestMove: true)) {
       return;
     }
@@ -423,8 +482,47 @@ class UciEngineService {
     if (bmTokens.length > 1 && bmTokens[1] != '(none)') {
       _lastBestmove = bmTokens[1];
     }
+    final bool wasGameOrHint = _gameMoveCompleter != null || _hintCompleter != null;
     if (_stopCompleter != null && !_stopCompleter!.isCompleted) {
       _stopCompleter!.complete();
+    }
+    if (_gameMoveCompleter != null && !_gameMoveCompleter!.isCompleted) {
+      _gameMoveCompleter!.complete(_lastBestmove);
+      _gameMoveCompleter = null;
+    }
+    if (_hintCompleter != null && !_hintCompleter!.isCompleted) {
+      var topArrow = _candidateArrowsMap[1] ?? (_candidateArrowsMap.isNotEmpty ? _candidateArrowsMap.values.first : null);
+      if (topArrow == null && _lastBestmove != null && _lastBestmove != '(none)') {
+        final candMove = _currentPosition.findLegalMoveByUci(_lastBestmove!);
+        if (candMove != null) {
+          topArrow = CandidateArrow(
+            rank: 1,
+            uciMove: _lastBestmove!,
+            from: candMove.from,
+            to: candMove.to,
+            pvUci: [_lastBestmove!],
+            pvSan: [candMove.san ?? _lastBestmove!],
+            winProbability: 55.0,
+            expectedScore: 55.0,
+            depth: _currentDepth ?? 12,
+            positionRevision: _positionRevision,
+            requestId: _analysisRequestId,
+            engineSessionId: _engineSessionId,
+            sourceFen: _currentFen,
+            style: _buildArrowStyle(rank: 1, expectedScore: 55.0),
+          );
+        }
+      }
+      _hintCompleter!.complete(topArrow);
+      _hintCompleter = null;
+    }
+
+    if (wasGameOrHint || EngineCoordinator().activeLeaseType == EngineLeaseType.play) {
+      _searchState = AnalysisDataState.idle;
+      _isAnalyzing = false;
+      _activeSearchFen = null;
+      _setLifecycle(EngineLifecycleState.ready, 'Engine idle');
+      return;
     }
 
     EngineTraceLogger.instance.log(
@@ -522,7 +620,7 @@ class UciEngineService {
     }
   }
 
-  Future<void> _waitForStopCompletion({Duration timeout = const Duration(milliseconds: 600)}) async {
+  Future<void> waitForStopCompletion({Duration timeout = const Duration(milliseconds: 600)}) async {
     if (_searchState != AnalysisDataState.stopping) return;
     _stopCompleter = Completer<void>();
     try {
@@ -590,11 +688,23 @@ class UciEngineService {
       // 9. NNCacheSize (Lc0 does not use Stockfish Hash)
       final cacheSize = _settings.hashSizeMb * 10000;
       _sendCommand('setoption name NNCacheSize value $cacheSize');
-    } else {
+    } else if (_settings.activeEngine == EngineType.stockfish) {
       // Stockfish options
       _sendCommand('setoption name Hash value ${_settings.hashSizeMb}');
       _sendCommand('setoption name MultiPV value ${_settings.multiPv}');
       _sendCommand('setoption name UCI_ShowWDL value true');
+      if (supportsLimitStrength) {
+        if (_settings.limitStrength) {
+          _sendCommand('setoption name UCI_LimitStrength value true');
+          final targetElo = (_settings.uciElo ?? 1600).clamp(minElo ?? 1320, maxElo ?? 3190);
+          _sendCommand('setoption name UCI_Elo value $targetElo');
+        } else {
+          _sendCommand('setoption name UCI_LimitStrength value false');
+        }
+      }
+      if (_supportedUciOptions.containsKey('Move Overhead')) {
+        _sendCommand('setoption name Move Overhead value ${_settings.moveOverheadMs}');
+      }
     }
 
     if (_settings.syzygyPath != null && _settings.syzygyPath!.isNotEmpty) {
@@ -807,8 +917,7 @@ class UciEngineService {
       pvUci: movesUci,
     );
 
-    final pvMoves = SANFormatter.parsePvLine(_currentPosition, movesUci);
-    final pvSan = pvMoves.map((m) => m.san).toList();
+    final firstSan = candidateMove.san ?? firstMoveUci;
 
     final pvLine = PvLine(
       multipv: multipv,
@@ -820,8 +929,8 @@ class UciEngineService {
       whiteExpectedScore: moveEvaluation.whiteExpectedScore,
       wdl: wdl,
       movesUci: movesUci,
-      movesSan: pvSan,
-      pvMoves: pvMoves,
+      movesSan: [firstSan],
+      pvMoves: const [],
       startFen: _currentFen,
       depth: depth,
       seldepth: seldepth,
@@ -860,7 +969,7 @@ class UciEngineService {
       from: candidateMove.from,
       to: candidateMove.to,
       pvUci: movesUci,
-      pvSan: pvSan,
+      pvSan: [firstSan],
       winProbability: winProb,
       drawProbability: (wdl != null && wdl.length >= 3) ? (wdl[1] / 10.0) : null,
       lossProbability: (wdl != null && wdl.length >= 3) ? (wdl[2] / 10.0) : null,
@@ -889,15 +998,32 @@ class UciEngineService {
     required int rank,
     required double expectedScore,
   }) {
-    final baseColor = rank == 1
-        ? Color(WinRateCalculator.getArrowColorValue(expectedScore))
-        : (rank == 2
-            ? const Color(0xFF4CAF50) // Green
-            : (rank == 3
-                ? const Color(0xFF29B6F6) // Cyan / Blue
-                : (rank == 4
-                    ? const Color(0xFFAB47BC) // Purple
-                    : const Color(0xFFFFA726)))); // Orange
+    final bool isMaia = _settings.isMaiaActive;
+
+    final Color baseColor;
+    if (isMaia) {
+      // Blue palette for Maia human move predictions
+      baseColor = rank == 1
+          ? const Color(0xFF29B6F6) // Bright Cyan/Blue for top human move
+          : (rank == 2
+              ? const Color(0xFF0288D1) // Deep Blue
+              : (rank == 3
+                  ? const Color(0xFF01579B) // Navy Blue
+                  : (rank == 4
+                      ? const Color(0xFF5C6BC0) // Indigo
+                      : const Color(0xFF7E57C2)))); // Deep Purple
+    } else {
+      // Green / WinRate palette for Stockfish / Alpha-Beta engines
+      baseColor = rank == 1
+          ? Color(WinRateCalculator.getArrowColorValue(expectedScore))
+          : (rank == 2
+              ? const Color(0xFF4CAF50) // Emerald Green
+              : (rank == 3
+                  ? const Color(0xFF81C784) // Light Green
+                  : (rank == 4
+                      ? const Color(0xFFA5D6A7) // Pale Green
+                      : const Color(0xFFC8E6C9)))); // Mint
+    }
 
     final opacity = rank == 1 ? 0.95 : (rank == 2 ? 0.85 : (rank == 3 ? 0.75 : 0.65));
     final strokeScale = rank == 1 ? 1.15 : (rank == 2 ? 0.95 : (rank == 3 ? 0.80 : 0.70));
@@ -907,7 +1033,7 @@ class UciEngineService {
     return ArrowVisualStyle(
       shaftColor: baseColor,
       badgeColor: baseColor,
-      textColor: const Color(0xFF111111),
+      textColor: isMaia ? const Color(0xFFFFFFFF) : const Color(0xFF111111),
       borderColor: rank == 1 ? const Color(0xFFFFFFFF) : const Color(0x66000000),
       opacity: opacity,
       strokeWidthScale: strokeScale,
@@ -920,7 +1046,7 @@ class UciEngineService {
   void _scheduleThrottledUpdate() {
     _hasPendingUpdate = true;
     if (_throttleTimer == null || !_throttleTimer!.isActive) {
-      _throttleTimer = Timer(const Duration(milliseconds: 80), () {
+      _throttleTimer = Timer(const Duration(milliseconds: 100), () {
         if (_hasPendingUpdate) {
           _emitThrottledAnalysis();
           _hasPendingUpdate = false;
@@ -932,13 +1058,41 @@ class UciEngineService {
   void _emitThrottledAnalysis({bool force = false}) {
     if (!isEngineEnabled && !force) return;
 
-    final sortedLines = _currentLines.values
+    final rawLines = _currentLines.values
         .where((l) =>
             l.positionRevision == _positionRevision &&
             l.analysisRequestId == _analysisRequestId &&
             l.engineSessionId == _engineSessionId)
         .toList()
       ..sort((a, b) => a.multipv.compareTo(b.multipv));
+
+    // Lazily resolve SAN and PvMoves for throttled update (capped to 14 plies, cached)
+    final sortedLines = <PvLine>[];
+    for (final line in rawLines) {
+      if (line.movesUci.isEmpty) {
+        sortedLines.add(line);
+        continue;
+      }
+      final key = '${_currentFen}_${line.movesUci.take(14).join(' ')}';
+      var cachedMoves = _pvParseCache[key];
+      if (cachedMoves == null) {
+        cachedMoves = SANFormatter.parsePvLine(
+          _currentPosition,
+          line.movesUci.take(14).toList(),
+        );
+        if (_pvParseCache.length > 500) {
+          _pvParseCache.clear();
+        }
+        _pvParseCache[key] = cachedMoves;
+      }
+      final sanList = cachedMoves.map((m) => m.san).toList();
+      final resolvedLine = line.copyWith(
+        pvMoves: cachedMoves,
+        movesSan: sanList.isNotEmpty ? sanList : line.movesSan,
+      );
+      _currentLines[line.multipv] = resolvedLine;
+      sortedLines.add(resolvedLine);
+    }
 
     final rawArrows = _candidateArrowsMap.values
         .where((a) =>
@@ -956,6 +1110,10 @@ class UciEngineService {
     for (final a in rawArrows) {
       byFrom.putIfAbsent(a.from, () => []).add(a);
     }
+
+    final Map<int, List<String>> sanByRank = {
+      for (final l in sortedLines) l.multipv: l.movesSan,
+    };
 
     for (final a in rawArrows) {
       final siblings = byFrom[a.from] ?? [];
@@ -976,6 +1134,7 @@ class UciEngineService {
           : a.nodePercentage;
 
       resolvedArrows.add(a.copyWith(
+        pvSan: sanByRank[a.rank] ?? a.pvSan,
         nodePercentage: nodePct,
         totalNodes: effectiveTotalNodes,
         style: a.style.copyWith(curvature: curvature),
@@ -1129,17 +1288,18 @@ class UciEngineService {
     }
 
     _analysisController.add(posAnalysis);
+    _analysisNotifier.value = posAnalysis;
   }
 
   /// Starts or updates analysis for the given position using Nibbler continuous-analysis rules.
-  /// Never thrashes the engine if analyzing the same FEN.
-  void startAnalysis(ChessPosition position) {
+  /// Never thrashes the engine if analyzing the same FEN, unless [forceRestart] is requested (e.g. MultiPV change).
+  void startAnalysis(ChessPosition position, {bool forceRestart = false}) {
     if (!isEngineEnabled) return;
 
     final newFen = position.toFen();
 
-    // 1. Continuous analysis check: If already searching this exact position, DO NOT restart!
-    if (_activeSearchFen == newFen && _isAnalyzing && _searchState == EngineSearchState.searching) {
+    // 1. Continuous analysis check: If already searching this exact position without forced restart, DO NOT restart!
+    if (!forceRestart && _activeSearchFen == newFen && _isAnalyzing && _searchState == EngineSearchState.searching) {
       return;
     }
 
@@ -1157,12 +1317,14 @@ class UciEngineService {
       fen: newFen,
       isEngineEnabled: isEngineEnabled,
     );
+    _analysisNotifier.value = null;
 
     _isAnalysisPaused = false;
     // Clear caches for new position
     _pvsReceivedCount = 0;
     _currentLines.clear();
     _candidateArrowsMap.clear();
+    _pvParseCache.clear();
     _positionPolicyCache.clear();
     _positionVisitsCache.clear();
     _positionMlhCache.clear();
@@ -1197,6 +1359,7 @@ class UciEngineService {
       _pendingRequestId = _analysisRequestId;
       _searchState = EngineSearchState.stopping;
       _sendCommand('stop');
+      _armStoppingWatchdog();
 
       EngineTraceLogger.instance.log(
         requestId: _analysisRequestId,
@@ -1208,9 +1371,10 @@ class UciEngineService {
         action: 'ISSUED_STOP_FOR_PENDING_SEARCH',
       );
     } else if (_searchState == EngineSearchState.stopping) {
-      // Already stopping: simply update the pending FEN
+      // Already stopping: simply update the pending FEN and refresh watchdog
       _pendingSearchFen = newFen;
       _pendingRequestId = _analysisRequestId;
+      _armStoppingWatchdog();
 
       EngineTraceLogger.instance.log(
         requestId: _analysisRequestId,
@@ -1269,6 +1433,7 @@ class UciEngineService {
     if (_engineProcess != null && _searchState == AnalysisDataState.searching) {
       _searchState = AnalysisDataState.stopping;
       _sendCommand('stop');
+      _armStoppingWatchdog();
       EngineTraceLogger.instance.log(
         requestId: _analysisRequestId,
         activeFen: _activeSearchFen ?? _currentFen,
@@ -1328,6 +1493,7 @@ class UciEngineService {
       if (_searchState == EngineSearchState.searching) {
         _searchState = EngineSearchState.stopping;
         _sendCommand('stop');
+        _armStoppingWatchdog();
       }
     } else {
       _searchState = EngineSearchState.idle;
@@ -1369,6 +1535,7 @@ class UciEngineService {
     if (_searchState == EngineSearchState.searching) {
       _searchState = EngineSearchState.stopping;
       _sendCommand('stop');
+      _armStoppingWatchdog();
       EngineTraceLogger.instance.log(
         requestId: _analysisRequestId,
         activeFen: _activeSearchFen ?? _currentFen,
@@ -1426,12 +1593,14 @@ class UciEngineService {
     final engineChanged = _settings.activeEngine != newSettings.activeEngine;
     final backendChanged = _settings.activeEngine == EngineType.lc0 &&
         _settings.lc0Backend != newSettings.lc0Backend;
+    final weightsChanged = _settings.activeEngine == EngineType.lc0 &&
+        _settings.weightsPath != newSettings.weightsPath;
     _settings = newSettings;
 
-    if (engineChanged || backendChanged || !isProcessAlive) {
+    if (engineChanged || backendChanged || weightsChanged || !isProcessAlive) {
       stopAnalysis();
       await initializeEngine(binaryPath, forceRestart: true, settings: newSettings);
-      if (isEngineEnabled) {
+      if (isEngineEnabled && EngineCoordinator().activeLeaseType == EngineLeaseType.analysis) {
         startAnalysis(_currentPosition);
       }
       return;
@@ -1444,7 +1613,8 @@ class UciEngineService {
     if (_searchState == EngineSearchState.searching) {
       _searchState = EngineSearchState.stopping;
       _sendCommand('stop');
-      await _waitForStopCompletion();
+      _armStoppingWatchdog();
+      await waitForStopCompletion();
     }
 
     // 2. Dispatch engine-specific options
@@ -1453,9 +1623,9 @@ class UciEngineService {
     // 3. Await readyok confirmation from engine
     await _waitForReadyOk();
 
-    // 4. Resume search if engine was active
-    if (isEngineEnabled && wasAnalyzing) {
-      startAnalysis(_currentPosition);
+    // 4. Resume search only if engine was active AND we hold the analysis lease
+    if (isEngineEnabled && wasAnalyzing && EngineCoordinator().activeLeaseType == EngineLeaseType.analysis) {
+      startAnalysis(_currentPosition, forceRestart: true);
     } else {
       _emitThrottledAnalysis(force: true);
     }
@@ -1463,11 +1633,13 @@ class UciEngineService {
 
   void _sendCommand(String cmd) {
     if (_engineProcess != null) {
+      debugPrint('[UCI_TX] $cmd');
       _engineProcess!.stdin.writeln(cmd);
     }
   }
 
   Future<void> _disposeProcess() async {
+    _cancelStoppingWatchdog();
     _processExited = true;
     _readyOkReceived = false;
     _optionsApplied = false;
@@ -1484,6 +1656,14 @@ class UciEngineService {
     if (_stopCompleter != null && !_stopCompleter!.isCompleted) {
       _stopCompleter!.complete();
     }
+    if (_gameMoveCompleter != null && !_gameMoveCompleter!.isCompleted) {
+      _gameMoveCompleter!.complete(null);
+      _gameMoveCompleter = null;
+    }
+    if (_hintCompleter != null && !_hintCompleter!.isCompleted) {
+      _hintCompleter!.complete(null);
+      _hintCompleter = null;
+    }
     if (_engineProcess != null) {
       try {
         _engineProcess!.stdin.writeln('quit');
@@ -1495,12 +1675,110 @@ class UciEngineService {
     }
   }
 
+  /// Dispatches an explicit move request for Play mode with Single-PV to save CPU/battery.
+  Future<String?> requestGameMove({
+    required ChessPosition position,
+    required int whiteTimeMs,
+    required int blackTimeMs,
+    int whiteIncMs = 0,
+    int blackIncMs = 0,
+    int? movetimeMs,
+    int? nodeLimit,
+  }) async {
+    if (_engineProcess == null || _processExited) {
+      throw StateError('Engine process is not running');
+    }
+
+    // Ensure engine is completely idle before issuing new position/go
+    if (_searchState == EngineSearchState.searching) {
+      _searchState = EngineSearchState.stopping;
+      _sendCommand('stop');
+      _armStoppingWatchdog();
+      await waitForStopCompletion();
+    }
+
+    if (_gameMoveCompleter != null && !_gameMoveCompleter!.isCompleted) {
+      _gameMoveCompleter!.complete(null);
+    }
+    _gameMoveCompleter = Completer<String?>();
+
+    // Single-PV for gameplay
+    _sendCommand('setoption name MultiPV value 1');
+
+    final fen = position.toFen();
+    _currentPosition = position;
+    _currentFen = fen;
+    _activeSearchFen = fen;
+    _searchState = EngineSearchState.searching;
+    _isAnalyzing = true;
+
+    _sendCommand('position fen $fen');
+
+    if (nodeLimit != null && nodeLimit > 0) {
+      _sendCommand('go nodes $nodeLimit');
+    } else if (_settings.isMaiaActive) {
+      _sendCommand('go nodes 1');
+    } else if (movetimeMs != null && movetimeMs > 0) {
+      _sendCommand('go movetime $movetimeMs');
+    } else if (whiteTimeMs <= 0 || blackTimeMs <= 0) {
+      _sendCommand('go movetime 1500');
+    } else {
+      _sendCommand(
+        'go wtime $whiteTimeMs btime $blackTimeMs winc $whiteIncMs binc $blackIncMs',
+      );
+    }
+
+    return _gameMoveCompleter!.future;
+  }
+
+  /// Ephemeral hint search that computes the top candidate arrow for the current position.
+  Future<CandidateArrow?> requestAdaptiveHint({
+    required ChessPosition position,
+    Duration searchTime = const Duration(milliseconds: 1500),
+  }) async {
+    if (_engineProcess == null || _processExited) return null;
+
+    // Ensure engine is completely idle before issuing new position/go
+    if (_searchState == EngineSearchState.searching) {
+      _searchState = EngineSearchState.stopping;
+      _sendCommand('stop');
+      _armStoppingWatchdog();
+      await waitForStopCompletion();
+    }
+
+    if (_hintCompleter != null && !_hintCompleter!.isCompleted) {
+      _hintCompleter!.complete(null);
+    }
+    _hintCompleter = Completer<CandidateArrow?>();
+
+    _sendCommand('setoption name MultiPV value 1');
+    final fen = position.toFen();
+    _currentPosition = position;
+    _currentFen = fen;
+    _activeSearchFen = fen;
+    _searchState = EngineSearchState.searching;
+    _isAnalyzing = true;
+
+    _sendCommand('position fen $fen');
+    _sendCommand('go movetime ${searchTime.inMilliseconds}');
+
+    return _hintCompleter!.future;
+  }
+
+  /// Restores standard analysis options (like MultiPV configured in settings).
+  void restoreAnalysisOptions() {
+    if (_engineProcess == null || _processExited) return;
+    _configureEngineOptions();
+  }
+
   void dispose() {
+    _cancelStoppingWatchdog();
     stopAnalysis();
     _throttleTimer?.cancel();
     _disposeProcess();
     _analysisController.close();
     _statusController.close();
     _evaluationNotifier.dispose();
+    _analysisNotifier.dispose();
   }
 }

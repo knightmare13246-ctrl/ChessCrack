@@ -176,9 +176,7 @@ class CandidateArrow {
           if (policyPercentage != null) {
             return '${policyPercentage!.round()}';
           }
-          return 'N/A';
         }
-        // Stockfish does not have MCTS policy priors
         return 'N/A';
 
       case ArrowheadType.multipvRank:
@@ -189,10 +187,7 @@ class CandidateArrow {
           if (movesLeft != null) {
             return '${movesLeft!.round()}';
           }
-          return 'N/A';
-        }
-        // Stockfish displays mate distance if available, otherwise N/A
-        if (scoreMate != null) {
+        } else if (engine == EngineType.stockfish && scoreMate != null) {
           return 'M${scoreMate!.abs()}';
         }
         return 'N/A';
@@ -294,10 +289,16 @@ List<CandidateArrow> filterCandidateArrows({
         filtered = arrows.where((a) => a.rank <= 3).toList();
         break;
       case ArrowFilterLc0.minNodes1:
-        filtered = arrows.where((a) => a.rank == 1 || (a.nodePercentage ?? 0.0) >= 1.0).toList();
+        filtered = arrows.where((a) =>
+            a.rank == 1 ||
+            (a.nodePercentage != null && a.nodePercentage! >= 1.0) ||
+            (a.policyPercentage != null && a.policyPercentage! >= 1.0)).toList();
         break;
       case ArrowFilterLc0.minNodes5:
-        filtered = arrows.where((a) => a.rank == 1 || (a.nodePercentage ?? 0.0) >= 5.0).toList();
+        filtered = arrows.where((a) =>
+            a.rank == 1 ||
+            (a.nodePercentage != null && a.nodePercentage! >= 5.0) ||
+            (a.policyPercentage != null && a.policyPercentage! >= 5.0)).toList();
         break;
       case ArrowFilterLc0.within2PctScore:
         final bestScore = arrows.first.expectedScore ?? 50.0;

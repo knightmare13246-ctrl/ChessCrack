@@ -218,7 +218,7 @@ class EngineDiagnosticsPanel extends StatelessWidget {
             if (d.timeMs > 0)
               _buildMetricChip('Time', '${(d.timeMs / 1000).toStringAsFixed(1)}s'),
             _buildMetricChip('Nodes', '${d.totalNodes}'),
-            _buildMetricChip('NPS', '${d.nps}'),
+            _buildMetricChip('NPS', d.nps != null ? '${d.nps}' : 'N/A'),
             if (d.hashfull > 0)
               _buildMetricChip('Hashfull', '${(d.hashfull / 10.0).toStringAsFixed(1)}%'),
             if (d.tbhits > 0)

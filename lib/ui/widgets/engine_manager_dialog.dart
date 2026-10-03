@@ -60,11 +60,18 @@ class _EngineManagerDialogState extends State<EngineManagerDialog> {
   }
 
   void _selectEngine(EngineType type) {
+    String? resolvedWeights;
+    if (type == EngineType.lc0) {
+      final installedNets = _downloadService.getInstalledMaiaModels();
+      if (installedNets.isNotEmpty) {
+        resolvedWeights = installedNets.first.localPath;
+      }
+    }
     setState(() {
       _currentSettings = _currentSettings.copyWith(
         activeEngine: type,
         selectedMaiaId: null,
-        weightsPath: null,
+        weightsPath: resolvedWeights,
         nodeLimit: null,
       );
     });
@@ -164,8 +171,17 @@ class _EngineManagerDialogState extends State<EngineManagerDialog> {
                     _buildMaiaInfoCard(),
                     const SizedBox(height: 10),
 
-                    // All 10 Maia model cards
+                    // All Maia model cards
                     ..._downloadService.maiaModels.values.map((model) => _buildMaiaCard(model)),
+
+                    const SizedBox(height: 20),
+
+                    // Section 3: Maia Human Behavior Analysis (Moves by Rating)
+                    _buildSectionHeader('HUMAN BEHAVIOR ANALYSIS (MOVES BY RATING)', Icons.insights),
+                    const SizedBox(height: 6),
+                    _buildMaiaRatingInfoCard(),
+                    const SizedBox(height: 10),
+                    _buildMaiaRatingModelCard(_downloadService.maiaRatingModelInfo),
 
                     // Bottom margin inside scroll area to guarantee the last card clears the footer
                     const SizedBox(height: 16),
@@ -766,6 +782,214 @@ class _EngineManagerDialogState extends State<EngineManagerDialog> {
     );
   }
 
+  Widget _buildMaiaRatingInfoCard() {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF132220),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFF00D2BE).withValues(alpha: 0.3)),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.auto_graph, color: Color(0xFF00D2BE), size: 16),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Powers the "Moves by Rating" human-behavior analysis graph. The Maia-3 neural network (CSSLab / ICLR 2026) directly predicts human move probability distributions conditioned on player ratings from 600 to 2600 Elo.',
+              style: TextStyle(color: Color(0xFFE0E0E0), fontSize: 11, height: 1.3),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMaiaRatingModelCard(EngineArtifactInfo info) {
+    final isInstalled = info.isInstalled;
+    final isDownloading = info.isDownloading;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isInstalled ? const Color(0xFF00D2BE).withValues(alpha: 0.5) : const Color(0xFF2C2C2C),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: isInstalled ? const Color(0xFF003830) : const Color(0xFF282828),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isInstalled ? const Color(0xFF00D2BE) : const Color(0xFF383838),
+                  ),
+                ),
+                child: const Center(
+                  child: Icon(Icons.show_chart, color: Color(0xFF00D2BE), size: 18),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      info.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      info.version,
+                      style: const TextStyle(color: Colors.white54, fontSize: 11),
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        _buildBadge('Elo 600-2600', const Color(0xFF00D2BE), const Color(0xFF162B28)),
+                        _buildBadge('ONNX Runtime', const Color(0xFF80CBC4), const Color(0xFF142926)),
+                        if (isInstalled)
+                          _buildBadge(
+                            'Installed (${EngineStorageSummary.formatBytes(info.installedSizeBytes)})',
+                            const Color(0xFF81C784),
+                            const Color(0xFF1A3326),
+                            icon: Icons.check,
+                          )
+                        else
+                          _buildBadge('Size: ~44 MB', Colors.white54, const Color(0xFF262626)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          if (isDownloading) ...[
+            const SizedBox(height: 8),
+            LinearProgressIndicator(
+              value: info.progress > 0 ? info.progress : null,
+              backgroundColor: Colors.white12,
+              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF00D2BE)),
+              borderRadius: BorderRadius.circular(2),
+            ),
+            const SizedBox(height: 3),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Downloading: ${(info.progress * 100).toStringAsFixed(0)}%',
+                  style: const TextStyle(color: Color(0xFF00D2BE), fontSize: 10),
+                ),
+                Text(
+                  info.totalBytes > 0
+                      ? '${EngineStorageSummary.formatBytes(info.bytesReceived)} / ${EngineStorageSummary.formatBytes(info.totalBytes)}'
+                      : '',
+                  style: const TextStyle(color: Colors.white54, fontSize: 10, fontFamily: 'monospace'),
+                ),
+              ],
+            ),
+          ],
+
+          if (info.errorMessage != null && !isDownloading) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Error: ${info.errorMessage}',
+              style: const TextStyle(color: Colors.redAccent, fontSize: 9.5),
+            ),
+          ],
+
+          const SizedBox(height: 8),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              if (isDownloading)
+                OutlinedButton.icon(
+                  onPressed: () => _downloadService.cancelDownload(info.id),
+                  icon: const Icon(Icons.cancel, size: 13, color: Colors.orangeAccent),
+                  label: const Text('CANCEL', style: TextStyle(fontSize: 10.5, color: Colors.orangeAccent)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.orangeAccent),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                )
+              else if (!isInstalled)
+                ElevatedButton.icon(
+                  onPressed: () => _downloadService.downloadMaiaRatingModel(),
+                  icon: const Icon(Icons.download, size: 13),
+                  label: const Text('DOWNLOAD', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF005FB8),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF003830),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: const Color(0xFF00D2BE)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_circle, size: 12, color: Color(0xFF00D2BE)),
+                      SizedBox(width: 4),
+                      Text(
+                        'ANALYSIS READY',
+                        style: TextStyle(color: Color(0xFF00D2BE), fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+
+              if (isInstalled && !isDownloading)
+                TextButton.icon(
+                  onPressed: () => _confirmRemove(
+                    title: 'Remove Maia-3 Rating Model?',
+                    content: 'This will delete the local neural network file (${info.filename}, ${EngineStorageSummary.formatBytes(info.installedSizeBytes)}). The "Moves by Rating" chart will prompt to re-download when opened.',
+                    onConfirm: () async {
+                      await _downloadService.deleteMaiaRatingModel();
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                  icon: const Icon(Icons.delete_outline, size: 14, color: Colors.redAccent),
+                  label: const Text('DELETE', style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBadge(String text, Color textColor, Color bgColor, {IconData? icon}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -812,23 +1036,31 @@ class _EngineManagerDialogState extends State<EngineManagerDialog> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      'SF: ${EngineStorageSummary.formatBytes(storage.stockfishBytes)}',
-                      style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'monospace'),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Lc0: ${EngineStorageSummary.formatBytes(storage.lc0Bytes)}',
-                      style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'monospace'),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Nets: ${EngineStorageSummary.formatBytes(storage.maiaBytes)}',
-                      style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'monospace'),
-                    ),
-                  ],
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      Text(
+                        'SF: ${EngineStorageSummary.formatBytes(storage.stockfishBytes)}',
+                        style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'monospace'),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Lc0: ${EngineStorageSummary.formatBytes(storage.lc0Bytes)}',
+                        style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'monospace'),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Nets: ${EngineStorageSummary.formatBytes(storage.maiaBytes)}',
+                        style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'monospace'),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Maia-3: ${EngineStorageSummary.formatBytes(storage.maia3Bytes)}',
+                        style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'monospace'),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 1),
                 Text(

@@ -407,6 +407,8 @@ class PvLine {
 
   int get badgeScore => (evaluation?.badgeScore ?? expectedScore.round()).clamp(0, 100);
 
+  bool get isMaia => policyPercentage != null && (nodes == null || nodes! <= 1);
+
   String get formattedScore {
     if (evaluation != null) {
       return evaluation!.formattedScore;

@@ -45,7 +45,20 @@ class NativeEngineRunner {
     }
   }
 
+  static const List<String> supportedAndroidAbis = ['arm64-v8a', 'armeabi-v7a'];
+
+  static bool isSupportedAbi(String abi) {
+    if (!Platform.isAndroid) return true;
+    return supportedAndroidAbis.contains(abi.trim().toLowerCase());
+  }
+
   static Future<String?> getEngineExecutablePath(EngineType engineType) async {
+    if (Platform.isAndroid) {
+      final abi = await getDeviceAbi();
+      if (!isSupportedAbi(abi)) {
+        return null;
+      }
+    }
     try {
       final appDir = await getApplicationDocumentsDirectory();
       if (engineType == EngineType.stockfish) {

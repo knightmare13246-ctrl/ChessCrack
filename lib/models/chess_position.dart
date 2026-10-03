@@ -641,5 +641,38 @@ class ChessPosition {
 
   bool isCheckmate() => isCheck() && generateLegalMoves().isEmpty;
   bool isStalemate() => !isCheck() && generateLegalMoves().isEmpty;
-  bool isGameOver() => isCheckmate() || isStalemate();
+  bool isInsufficientMaterial() {
+    int whitePieces = 0;
+    int blackPieces = 0;
+    int whiteKnights = 0;
+    int blackKnights = 0;
+    int whiteBishops = 0;
+    int blackBishops = 0;
+
+    for (int i = 0; i < 64; i++) {
+      final p = board[i];
+      if (p == null) continue;
+      if (p.type == PieceType.king) continue;
+      if (p.type == PieceType.queen || p.type == PieceType.rook || p.type == PieceType.pawn) {
+        return false;
+      }
+      if (p.color == PieceColor.white) {
+        whitePieces++;
+        if (p.type == PieceType.knight) whiteKnights++;
+        if (p.type == PieceType.bishop) whiteBishops++;
+      } else {
+        blackPieces++;
+        if (p.type == PieceType.knight) blackKnights++;
+        if (p.type == PieceType.bishop) blackBishops++;
+      }
+    }
+
+    if (whitePieces == 0 && blackPieces == 0) return true;
+    if ((whitePieces == 1 && (whiteKnights == 1 || whiteBishops == 1) && blackPieces == 0) ||
+        (blackPieces == 1 && (blackKnights == 1 || blackBishops == 1) && whitePieces == 0)) {
+      return true;
+    }
+    return false;
+  }
+  bool isGameOver() => isCheckmate() || isStalemate() || isInsufficientMaterial();
 }

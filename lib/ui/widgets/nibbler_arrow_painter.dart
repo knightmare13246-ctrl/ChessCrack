@@ -39,13 +39,22 @@ class NibblerArrowPainter extends CustomPainter {
       if (from == null || to == null || uci == null) continue;
 
       final rank = line.multipv;
-      final baseColor = rank == 1
-          ? Color(WinRateCalculator.getArrowColorValue(line.expectedScore))
-          : (rank == 2
-              ? const Color(0xFF4CAF50)
-              : (rank == 3
-                  ? const Color(0xFF29B6F6)
-                  : const Color(0xFFAB47BC)));
+      final isMaia = line.isMaia;
+      final baseColor = isMaia
+          ? (rank == 1
+              ? const Color(0xFF29B6F6)
+              : (rank == 2
+                  ? const Color(0xFF0288D1)
+                  : (rank == 3
+                      ? const Color(0xFF01579B)
+                      : const Color(0xFF5C6BC0))))
+          : (rank == 1
+              ? Color(WinRateCalculator.getArrowColorValue(line.expectedScore))
+              : (rank == 2
+                  ? const Color(0xFF4CAF50)
+                  : (rank == 3
+                      ? const Color(0xFF81C784)
+                      : const Color(0xFFA5D6A7))));
 
       list.add(CandidateArrow(
         rank: rank,
@@ -68,7 +77,7 @@ class NibblerArrowPainter extends CustomPainter {
         style: ArrowVisualStyle(
           shaftColor: baseColor,
           badgeColor: baseColor,
-          textColor: const Color(0xFF111111),
+          textColor: isMaia ? Colors.white : const Color(0xFF111111),
           borderColor: rank == 1 ? Colors.white : Colors.black45,
           opacity: rank == 1 ? 0.95 : 0.80,
           strokeWidthScale: rank == 1 ? 1.15 : 0.90,
@@ -89,10 +98,11 @@ class NibblerArrowPainter extends CustomPainter {
     // Filter valid arrows
     final validArrows = <CandidateArrow>[];
     for (final arrow in candidateArrows) {
-      if (arrow.positionRevision <= 0 || arrow.positionRevision != positionRevision) {
+      // Allow hint arrows or unversioned arrows (revision <= 0), otherwise require matching revision
+      if (arrow.positionRevision > 0 && positionRevision > 0 && arrow.positionRevision != positionRevision) {
         continue;
       }
-      if (arrow.requestId <= 0 || (analysisRequestId != null && arrow.requestId != analysisRequestId)) {
+      if (arrow.requestId > 0 && analysisRequestId != null && arrow.requestId != analysisRequestId) {
         continue;
       }
       if (arrow.from == arrow.to) {

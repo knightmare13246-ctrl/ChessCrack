@@ -4,8 +4,10 @@ import '../../models/chess_position.dart';
 import '../../models/draft_variation.dart';
 import '../../models/engine_analysis.dart';
 import '../../models/engine_settings.dart';
+import '../../models/maia_dual_analysis.dart';
 import '../../utils/win_rate_calculator.dart';
 import 'chess_move_token.dart';
+import 'moves_by_rating_chart.dart';
 
 class EngineAnalysisPanel extends StatelessWidget {
   final PositionAnalysis? analysis;
@@ -25,6 +27,14 @@ class EngineAnalysisPanel extends StatelessWidget {
   final VoidCallback? onDraftGoToStart;
   final VoidCallback? onDraftGoToEnd;
   final VoidCallback? onDraftToggleAutoPlay;
+  // Moves by Rating interactive chart bindings
+  final MovesByRatingDataset? movesByRatingData;
+  final ValueChanged<int>? onSelectMaiaRating;
+  final ValueChanged<String>? onHighlightMove;
+  final VoidCallback? onDownloadMaiaModelRequested;
+  final String? highlightedUciMove;
+  final VoidCallback? onOpenEngineSettings;
+  final VoidCallback? onOpenArrowSettings;
 
   const EngineAnalysisPanel({
     super.key,
@@ -43,6 +53,13 @@ class EngineAnalysisPanel extends StatelessWidget {
     this.onDraftGoToStart,
     this.onDraftGoToEnd,
     this.onDraftToggleAutoPlay,
+    this.movesByRatingData,
+    this.onSelectMaiaRating,
+    this.onHighlightMove,
+    this.onDownloadMaiaModelRequested,
+    this.highlightedUciMove,
+    this.onOpenEngineSettings,
+    this.onOpenArrowSettings,
   });
 
   @override
@@ -79,202 +96,244 @@ class EngineAnalysisPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 1. Engine Header Bar: Engine Identity, Status & Pause/Analyze toggle
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Engine title + Live pulse dot + Tag
-              Expanded(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isAnalyzing
-                            ? const Color(0xFF00D2BE)
-                            : (analysis?.searchState == AnalysisDataState.paused
-                                ? const Color(0xFFFFB300)
-                                : Colors.white24),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      engineDisplayName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                    if (engineSubtitle.isNotEmpty) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1E2832),
-                          borderRadius: BorderRadius.circular(3),
-                          border: Border.all(color: const Color(0xFF005FB8), width: 0.6),
-                        ),
-                        child: Text(
-                          engineSubtitle,
-                          style: const TextStyle(
-                            color: Color(0xFF80D4FF),
-                            fontSize: 9.5,
-                            fontFamily: 'monospace',
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                    if (analysis?.searchState == AnalysisDataState.paused) ...[
-                      const SizedBox(width: 6),
-                      const Text(
-                        'PAUSED',
-                        style: TextStyle(
-                          color: Color(0xFFFFB300),
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Pause / Analyze toggle button
-              GestureDetector(
-                onTap: onToggleAnalysis,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
-                  decoration: BoxDecoration(
-                    color: isAnalyzing ? const Color(0xFF2E7D32) : const Color(0xFF333333),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(
-                      color: isAnalyzing ? const Color(0xFF4CAF50) : const Color(0xFF555555),
-                      width: 1,
-                    ),
-                  ),
+            // 1. Engine Header Bar: Engine Identity, Status & Pause/Analyze toggle
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Engine title + Live pulse dot + Tag
+                Expanded(
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        isAnalyzing ? Icons.pause : Icons.play_arrow,
-                        color: Colors.white,
-                        size: 13,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        isAnalyzing ? 'Pause' : 'Analyze',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isAnalyzing
+                              ? const Color(0xFF00D2BE)
+                              : (analysis?.searchState == AnalysisDataState.paused
+                                  ? const Color(0xFFFFB300)
+                                  : Colors.white24),
                         ),
                       ),
+                      const SizedBox(width: 6),
+                      Text(
+                        engineDisplayName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                      if (engineSubtitle.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E2832),
+                            borderRadius: BorderRadius.circular(3),
+                            border: Border.all(color: const Color(0xFF005FB8), width: 0.6),
+                          ),
+                          child: Text(
+                            engineSubtitle,
+                            style: const TextStyle(
+                              color: Color(0xFF80D4FF),
+                              fontSize: 9.5,
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (analysis?.searchState == AnalysisDataState.paused) ...[
+                        const SizedBox(width: 6),
+                        const Text(
+                          'PAUSED',
+                          style: TextStyle(
+                            color: Color(0xFFFFB300),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 5),
-
-          // 2. Real Telemetry Bar (Never truncated with ellipsis, auto-fits width)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
-            decoration: BoxDecoration(
-              color: const Color(0xFF161616),
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: const Color(0xFF242424), width: 0.8),
-            ),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                headerText,
-                style: const TextStyle(
-                  color: Color(0xFFCCCCCC),
-                  fontFamily: 'monospace',
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-
-          // WDL diagnostics row
-          if (diag != null &&
-              diag.wdl != null &&
-              diag.wdl!.length >= 3 &&
-              infoStats.contains('wdl')) ...[
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'WDL: ${(diag.wdl![0] / 10).toStringAsFixed(1)}% / ${(diag.wdl![1] / 10).toStringAsFixed(1)}% / ${(diag.wdl![2] / 10).toStringAsFixed(1)}%',
-                    style: const TextStyle(
-                      color: Color(0xFF00D2BE),
-                      fontFamily: 'monospace',
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                const SizedBox(width: 8),
+                if (onOpenArrowSettings != null)
+                  IconButton(
+                    icon: const Icon(Icons.north_east, color: Color(0xFF00D2BE), size: 18),
+                    onPressed: onOpenArrowSettings,
+                    tooltip: 'Arrow Settings',
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                   ),
-                ),
-                Text(
-                  'Rev: #${diag.positionRevision} (${diag.backend})',
-                  style: const TextStyle(
-                    color: Colors.white38,
-                    fontFamily: 'monospace',
-                    fontSize: 10,
+                if (onOpenEngineSettings != null)
+                  IconButton(
+                    icon: const Icon(Icons.tune, color: Colors.white70, size: 18),
+                    onPressed: onOpenEngineSettings,
+                    tooltip: 'Engine Settings',
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  ),
+                const SizedBox(width: 4),
+                // Pause / Analyze toggle button
+                GestureDetector(
+                  onTap: onToggleAnalysis,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+                    decoration: BoxDecoration(
+                      color: isAnalyzing ? const Color(0xFF2E7D32) : const Color(0xFF333333),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: isAnalyzing ? const Color(0xFF4CAF50) : const Color(0xFF555555),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isAnalyzing ? Icons.pause : Icons.play_arrow,
+                          color: Colors.white,
+                          size: 13,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          isAnalyzing ? 'Pause' : 'Analyze',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
-          ],
 
-          // Draft Variation Playback Toolbar
-          if (draftVariation != null) ...[
-            const SizedBox(height: 6),
-            _buildDraftToolbar(context, draftVariation!),
-          ],
+            const SizedBox(height: 5),
 
-          const SizedBox(height: 4),
-          const Divider(color: Color(0xFF222222), height: 1),
-          const SizedBox(height: 4),
-
-          // PV lines list
-          Expanded(
-            child: lines.isEmpty
-                ? Center(
-                    child: Text(
-                      isAnalyzing
-                          ? 'Awaiting engine evaluation...'
-                          : 'Tap Analyze to start live engine evaluation',
-                      style: const TextStyle(color: Colors.white38, fontSize: 12),
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: lines.length,
-                    padding: EdgeInsets.zero,
-                    itemBuilder: (context, index) {
-                      final line = lines[index];
-                      return _buildPvLineItem(context, line, infoStats);
-                    },
+            // 2. Real Telemetry Bar (Never truncated with ellipsis, auto-fits width)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
+              decoration: BoxDecoration(
+                color: const Color(0xFF161616),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: const Color(0xFF242424), width: 0.8),
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  headerText,
+                  style: const TextStyle(
+                    color: Color(0xFFCCCCCC),
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
                   ),
-          ),
-        ],
-      ),
-    );
+                ),
+              ),
+            ),
+
+            // WDL diagnostics row
+            if (diag != null &&
+                diag.wdl != null &&
+                diag.wdl!.length >= 3 &&
+                infoStats.contains('wdl')) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'WDL: ${(diag.wdl![0] / 10).toStringAsFixed(1)}% / ${(diag.wdl![1] / 10).toStringAsFixed(1)}% / ${(diag.wdl![2] / 10).toStringAsFixed(1)}%',
+                      style: const TextStyle(
+                        color: Color(0xFF00D2BE),
+                        fontFamily: 'monospace',
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    'Rev: #${diag.positionRevision} (${diag.backend})',
+                    style: const TextStyle(
+                      color: Colors.white38,
+                      fontFamily: 'monospace',
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+
+            // Draft Variation Playback Toolbar
+            if (draftVariation != null) ...[
+              const SizedBox(height: 6),
+              _buildDraftToolbar(context, draftVariation!),
+            ],
+
+            const SizedBox(height: 4),
+            const Divider(color: Color(0xFF222222), height: 1),
+            const SizedBox(height: 4),
+
+            // Scrollable Analysis Body: PV lines + Moves by Rating Chart
+            Expanded(
+              child: SingleChildScrollView(
+                key: const PageStorageKey<String>('engine_analysis_scroll_body'),
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // PV lines list
+                    if (lines.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Center(
+                          child: Text(
+                            isAnalyzing
+                                ? 'Awaiting engine evaluation...'
+                                : 'Tap Analyze to start live engine evaluation',
+                            style: const TextStyle(color: Colors.white38, fontSize: 12),
+                          ),
+                        ),
+                      )
+                    else
+                      ...lines.map((line) => _buildPvLineItem(context, line, infoStats)),
+
+                    // Interactive Moves by Rating Chart (Maiachess.com analysis style)
+                    if (movesByRatingData != null &&
+                        (!movesByRatingData!.isModelInstalled || movesByRatingData!.curves.isNotEmpty)) ...[
+                      const SizedBox(height: 6),
+                      RepaintBoundary(
+                        child: MovesByRatingChart(
+                          dataset: movesByRatingData!,
+                          onRatingSelected: onSelectMaiaRating,
+                          onMoveSelected: onHighlightMove,
+                          onDownloadModelRequested: onDownloadMaiaModelRequested,
+                          highlightedUciMove: highlightedUciMove,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
   }
 
 
@@ -438,14 +497,19 @@ class EngineAnalysisPanel extends StatelessWidget {
       );
     }
 
-    // Formatted score
+    // Formatted score (Human Move Probability for Maia, CP/Mate score for Stockfish)
+    final bool isMaiaLine = line.isMaia || (settings?.isMaiaActive == true);
+    final String displayScore = (isMaiaLine && line.policyPercentage != null)
+        ? '${line.policyPercentage!.toStringAsFixed(1)}%'
+        : line.formattedScore;
+
     widgets.add(
       Padding(
         padding: const EdgeInsets.only(right: 6.0),
         child: Text(
-          line.formattedScore,
+          displayScore,
           style: TextStyle(
-            color: scoreColor,
+            color: isMaiaLine ? const Color(0xFF80D4FF) : scoreColor,
             fontWeight: FontWeight.bold,
             fontSize: 11.5,
             fontFamily: 'monospace',

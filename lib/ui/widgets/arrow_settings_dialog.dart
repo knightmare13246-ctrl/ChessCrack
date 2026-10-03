@@ -36,6 +36,7 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
   late ArrowFilterLc0 _selectedFilterLc0;
   late ArrowFilterOthers _selectedFilterOthers;
   late Set<String> _infoboxStats;
+  late int _multiPv;
 
   @override
   void initState() {
@@ -44,6 +45,7 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
     _selectedFilterLc0 = widget.settings.arrowFilterLc0;
     _selectedFilterOthers = widget.settings.arrowFilterOthers;
     _infoboxStats = Set.from(widget.settings.infoboxStats);
+    _multiPv = widget.settings.multiPv;
   }
 
   void _notifyChange() {
@@ -52,6 +54,7 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
       arrowFilterLc0: _selectedFilterLc0,
       arrowFilterOthers: _selectedFilterOthers,
       infoboxStats: _infoboxStats,
+      multiPv: _multiPv,
     );
     widget.onSettingsChanged(updated);
   }
@@ -90,7 +93,10 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.close, color: Colors.white70),
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () {
+                _notifyChange();
+                Navigator.of(context).pop();
+              },
                 ),
               ],
             ),
@@ -103,82 +109,166 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
             Expanded(
               child: ListView(
                 children: [
-                  // Section 1: Arrowhead Type
-                  _buildSectionHeader('ARROWHEAD TYPE (BADGE DISPLAY)'),
-              const SizedBox(height: 6),
-              ...ArrowheadType.values.map((type) {
-                final isSelected = _selectedArrowhead == type;
-                final isAvailable = !((type == ArrowheadType.policy) && !isLc0);
-
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Material(
-                    color: isSelected ? const Color(0xFF003830) : const Color(0xFF222222),
-                    shape: RoundedRectangleBorder(
+                  // Section 1: Arrow Quantity (MultiPV)
+                  _buildSectionHeader('ARROW QUANTITY (MULTIPV LINES)'),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF222222),
                       borderRadius: BorderRadius.circular(8),
-                      side: BorderSide(
-                        color: isSelected ? const Color(0xFF00D2BE) : Colors.white10,
-                      ),
+                      border: Border.all(color: Colors.white10),
                     ),
-                    clipBehavior: Clip.antiAlias,
-                    child: ListTile(
-                      dense: true,
-                      title: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              type.label,
-                              style: TextStyle(
-                                color: isSelected ? const Color(0xFF00D2BE) : Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                          if (!isAvailable) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                              decoration: BoxDecoration(
-                                color: Colors.red.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(color: Colors.redAccent, width: 0.8),
-                              ),
-                              child: const Text(
-                                'N/A on Stockfish',
-                                style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold),
-                              ),
-                            ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Candidate Moves / Arrows:', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                            Text('$_multiPv', style: const TextStyle(color: Color(0xFF00D2BE), fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
                           ],
-                        ],
-                      ),
-                      subtitle: Text(
-                        type.description,
-                        style: const TextStyle(color: Colors.white60, fontSize: 11.5),
-                      ),
-                      trailing: Radio<ArrowheadType>(
-                        value: type,
-                        groupValue: _selectedArrowhead,
-                        activeColor: const Color(0xFF00D2BE),
-                        onChanged: (val) {
-                          if (val != null) {
-                            setState(() => _selectedArrowhead = val);
+                        ),
+                        const SizedBox(height: 10),
+                        // Direct 1-tap buttons for 1, 2, 3, 4, 5
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [1, 2, 3, 4, 5].map((pv) {
+                            final isSel = _multiPv == pv;
+                            return GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () {
+                                setState(() {
+                                  _multiPv = pv;
+                                  _selectedFilterOthers = ArrowFilterOthers.all;
+                                  if (isLc0 && _selectedFilterLc0 != ArrowFilterLc0.all) {
+                                    _selectedFilterLc0 = ArrowFilterLc0.all;
+                                  }
+                                });
+                                _notifyChange();
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: isSel ? const Color(0xFF00D2BE) : const Color(0xFF262626),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: isSel ? const Color(0xFF00D2BE) : const Color(0xFF444444),
+                                    width: 1.2,
+                                  ),
+                                ),
+                                child: Text(
+                                  '$pv',
+                                  style: TextStyle(
+                                    color: isSel ? Colors.black : Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 6),
+                        Slider(
+                          value: _multiPv.toDouble().clamp(1.0, 10.0),
+                          min: 1,
+                          max: 10,
+                          divisions: 9,
+                          activeColor: const Color(0xFF00D2BE),
+                          inactiveColor: Colors.white24,
+                          onChanged: (val) {
+                            setState(() {
+                              _multiPv = val.round();
+                              _selectedFilterOthers = ArrowFilterOthers.all;
+                              if (isLc0 && _selectedFilterLc0 != ArrowFilterLc0.all) {
+                                _selectedFilterLc0 = ArrowFilterLc0.all;
+                              }
+                            });
                             _notifyChange();
-                          }
-                        },
-                      ),
-                      onTap: () {
-                        setState(() => _selectedArrowhead = type);
-                        _notifyChange();
-                      },
+                          },
+                        ),
+                      ],
                     ),
                   ),
-                );
-              }),
+
+                  const SizedBox(height: 16),
+
+                  // Section 2: Arrowhead Type
+                  _buildSectionHeader('ARROWHEAD TYPE (BADGE DISPLAY)'),
+                  const SizedBox(height: 6),
+                  ...ArrowheadType.values.map((type) {
+                    final isSelected = _selectedArrowhead == type;
+                    final isAvailable = !((type == ArrowheadType.policy) && !isLc0);
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: Material(
+                        color: isSelected ? const Color(0xFF003830) : const Color(0xFF222222),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: BorderSide(
+                            color: isSelected ? const Color(0xFF00D2BE) : Colors.white10,
+                          ),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: ListTile(
+                          dense: true,
+                          title: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  type.label,
+                                  style: TextStyle(
+                                    color: isSelected ? const Color(0xFF00D2BE) : Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                              if (!isAvailable) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: Colors.redAccent, width: 0.8),
+                                  ),
+                                  child: const Text(
+                                    'N/A on Stockfish',
+                                    style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          subtitle: Text(
+                            type.description,
+                            style: const TextStyle(color: Colors.white60, fontSize: 11.5),
+                          ),
+                          trailing: Radio<ArrowheadType>(
+                            value: type,
+                            groupValue: _selectedArrowhead,
+                            activeColor: const Color(0xFF00D2BE),
+                            onChanged: (val) {
+                              if (val != null) {
+                                setState(() => _selectedArrowhead = val);
+                                _notifyChange();
+                              }
+                            },
+                          ),
+                          onTap: () {
+                            setState(() => _selectedArrowhead = type);
+                            _notifyChange();
+                          },
+                        ),
+                      ),
+                    );
+                  }),
 
               const SizedBox(height: 20),
 
-              // Section 2: Arrow Filter
+              // Section 3: Arrow Filter
               _buildSectionHeader(
                 isLc0 ? 'ARROW FILTER (Lc0 NEURAL CANDIDATES)' : 'ARROW FILTER (TRADITIONAL ENGINE)',
               ),
@@ -293,7 +383,10 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () {
+                _notifyChange();
+                Navigator.of(context).pop();
+              },
               child: const Text(
                 'Done',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),

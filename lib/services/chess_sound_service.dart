@@ -37,7 +37,7 @@ class ChessSoundService {
     try {
       _player.setAudioContext(AudioContext(
         android: const AudioContextAndroid(
-          isSpeakerphoneOn: true,
+          isSpeakerphoneOn: false,
           stayAwake: false,
           contentType: AndroidContentType.sonification,
           usageType: AndroidUsageType.assistanceSonification,

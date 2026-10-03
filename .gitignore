@@ -61,7 +61,18 @@ android/key.properties
 /stockfish/
 /temp_sf19*/
 
-# Test screenshots
+# Test screenshots and dumps
 phone_*.png
 tablet_*.png
 current_screen.png
+screen_*.png
+*.raw
+*.xml
+test/*.png
+*.onnx
+run_inference_test.py
+scratch_*
+test_load.py
+test_ort.py
+verify_maia3.py
+

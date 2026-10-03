@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../models/chess_move.dart';
 import '../../models/chess_position.dart';
@@ -20,6 +21,7 @@ class NibblerBoard extends StatefulWidget {
   final int? analysisRequestId;
   final void Function(ChessMove move) onMove;
   final int animationDurationMs;
+  final ValueListenable<PositionAnalysis?>? analysisListenable;
 
   const NibblerBoard({
     super.key,
@@ -36,6 +38,7 @@ class NibblerBoard extends StatefulWidget {
     this.engineType = EngineType.lc0,
     required this.onMove,
     this.animationDurationMs = 200,
+    this.analysisListenable,
   });
 
   @override
@@ -119,7 +122,7 @@ class _NibblerBoardState extends State<NibblerBoard>
 
     if (pieceAtTarget != null && pieceAtTarget.color == widget.position.turn) {
       final legal = widget.position
-          .generateLegalMoves()
+          .legalMoves
           .where((m) => m.from == square)
           .toList();
 
@@ -213,8 +216,10 @@ class _NibblerBoardState extends State<NibblerBoard>
             height: boardSize,
             child: Stack(
               children: [
-                // 1. Board background (Texture or Solid Color)
-                _buildBoardBackground(boardSize, squareSize),
+                // 1. Board background (Texture or Solid Color) with isolated RepaintBoundary
+                RepaintBoundary(
+                  child: _buildBoardBackground(boardSize, squareSize),
+                ),
 
                 // 2. Square highlights (Last Move, Selected, King Check)
                 _buildHighlightsLayer(squareSize),
@@ -234,19 +239,46 @@ class _NibblerBoardState extends State<NibblerBoard>
                 Positioned.fill(
                   child: IgnorePointer(
                     child: RepaintBoundary(
-                      child: CustomPaint(
-                        size: Size(boardSize, boardSize),
-                        painter: NibblerArrowPainter(
-                          candidateArrows: widget.candidateArrows,
-                          pvLines: widget.candidateLines,
-                          position: widget.position,
-                          positionRevision: widget.positionRevision,
-                          analysisRequestId: widget.analysisRequestId,
-                          isFlipped: widget.isFlipped,
-                          arrowheadType: widget.arrowheadType,
-                          engineType: widget.engineType,
-                        ),
-                      ),
+                      child: widget.analysisListenable != null
+                          ? ValueListenableBuilder<PositionAnalysis?>(
+                              valueListenable: widget.analysisListenable!,
+                              builder: (context, analysis, _) {
+                                final isFenMatch = analysis != null &&
+                                    (analysis.fen == widget.position.toFen() ||
+                                     analysis.fen.trim().split(' ').take(4).join(' ') == widget.position.toFen().trim().split(' ').take(4).join(' '));
+                                final arrows = isFenMatch ? analysis.candidateArrows : widget.candidateArrows;
+                                final lines = isFenMatch ? analysis.pvLines : widget.candidateLines;
+                                final posRev = isFenMatch ? analysis.positionRevision : widget.positionRevision;
+                                final reqId = isFenMatch ? analysis.analysisRequestId : widget.analysisRequestId;
+
+                                return CustomPaint(
+                                  size: Size(boardSize, boardSize),
+                                  painter: NibblerArrowPainter(
+                                    candidateArrows: arrows,
+                                    pvLines: lines,
+                                    position: widget.position,
+                                    positionRevision: posRev,
+                                    analysisRequestId: reqId,
+                                    isFlipped: widget.isFlipped,
+                                    arrowheadType: widget.arrowheadType,
+                                    engineType: widget.engineType,
+                                  ),
+                                );
+                              },
+                            )
+                          : CustomPaint(
+                              size: Size(boardSize, boardSize),
+                              painter: NibblerArrowPainter(
+                                candidateArrows: widget.candidateArrows,
+                                pvLines: widget.candidateLines,
+                                position: widget.position,
+                                positionRevision: widget.positionRevision,
+                                analysisRequestId: widget.analysisRequestId,
+                                isFlipped: widget.isFlipped,
+                                arrowheadType: widget.arrowheadType,
+                                engineType: widget.engineType,
+                              ),
+                            ),
                     ),
                   ),
                 ),
@@ -271,20 +303,12 @@ class _NibblerBoardState extends State<NibblerBoard>
             ),
           )
         else
-          GridView.builder(
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: 64,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 8),
-            itemBuilder: (context, index) {
-              final row = index ~/ 8;
-              final col = index % 8;
-              final rank = widget.isFlipped ? row : (7 - row);
-              final file = widget.isFlipped ? (7 - col) : col;
-              final isLight = (file + rank) % 2 != 0;
-              return Container(
-                color: isLight ? widget.boardTheme.lightSquare : widget.boardTheme.darkSquare,
-              );
-            },
+          CustomPaint(
+            size: Size(boardSize, boardSize),
+            painter: _BoardSquaresPainter(
+              boardTheme: widget.boardTheme,
+              isFlipped: widget.isFlipped,
+            ),
           ),
 
         // Interactive coordinate overlay & touch target grid
@@ -310,13 +334,13 @@ class _NibblerBoardState extends State<NibblerBoard>
               onWillAcceptWithDetails: (details) {
                 final fromSquare = details.data;
                 return widget.position
-                    .generateLegalMoves()
+                    .legalMoves
                     .any((m) => m.from == fromSquare && m.to == square);
               },
               onAcceptWithDetails: (details) {
                 final fromSquare = details.data;
                 final matching = widget.position
-                    .generateLegalMoves()
+                    .legalMoves
                     .where((m) => m.from == fromSquare && m.to == square)
                     .toList();
                 if (matching.isNotEmpty) {
@@ -555,7 +579,7 @@ class _NibblerBoardState extends State<NibblerBoard>
           ),
           onDragStarted: () {
             final legal = widget.position
-                .generateLegalMoves()
+                .legalMoves
                 .where((m) => m.from == square)
                 .toList();
             setState(() {
@@ -650,5 +674,37 @@ class _NibblerBoardState extends State<NibblerBoard>
     final f = widget.isFlipped ? (7 - sq.file) : sq.file;
     final r = widget.isFlipped ? sq.rank : (7 - sq.rank);
     return Rect.fromLTWH(f * squareSize, r * squareSize, squareSize, squareSize);
+  }
+}
+
+class _BoardSquaresPainter extends CustomPainter {
+  final BoardThemeData boardTheme;
+  final bool isFlipped;
+
+  const _BoardSquaresPainter({
+    required this.boardTheme,
+    required this.isFlipped,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final squareSize = size.width / 8.0;
+    final lightPaint = Paint()..color = boardTheme.lightSquare;
+    final darkPaint = Paint()..color = boardTheme.darkSquare;
+
+    for (int rank = 0; rank < 8; rank++) {
+      for (int file = 0; file < 8; file++) {
+        final isLight = (file + rank) % 2 != 0;
+        final f = isFlipped ? (7 - file) : file;
+        final r = isFlipped ? rank : (7 - rank);
+        final rect = Rect.fromLTWH(f * squareSize, r * squareSize, squareSize, squareSize);
+        canvas.drawRect(rect, isLight ? lightPaint : darkPaint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BoardSquaresPainter oldDelegate) {
+    return oldDelegate.boardTheme != boardTheme || oldDelegate.isFlipped != isFlipped;
   }
 }

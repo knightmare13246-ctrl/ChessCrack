@@ -6,21 +6,21 @@ import 'chess_move_token.dart';
 class MoveTreeWidget extends StatelessWidget {
   final GameTree gameTree;
   final void Function(GameNode node) onSelectNode;
-  final VoidCallback onStepBackward;
-  final VoidCallback onStepForward;
-  final VoidCallback onGoToStart;
-  final VoidCallback onGoToEnd;
-  final VoidCallback onReturnToOriginal;
+  final VoidCallback? onStepBackward;
+  final VoidCallback? onStepForward;
+  final VoidCallback? onGoToStart;
+  final VoidCallback? onGoToEnd;
+  final VoidCallback? onReturnToOriginal;
 
   const MoveTreeWidget({
     super.key,
     required this.gameTree,
     required this.onSelectNode,
-    required this.onStepBackward,
-    required this.onStepForward,
-    required this.onGoToStart,
-    required this.onGoToEnd,
-    required this.onReturnToOriginal,
+    this.onStepBackward,
+    this.onStepForward,
+    this.onGoToStart,
+    this.onGoToEnd,
+    this.onReturnToOriginal,
   });
 
   @override
@@ -31,44 +31,20 @@ class MoveTreeWidget extends StatelessWidget {
       color: const Color(0xFF141414),
       child: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: const BoxDecoration(
-              color: Color(0xFF1C1C1C),
-              border: Border(bottom: BorderSide(color: Color(0xFF2C2C2C), width: 1)),
-            ),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.first_page, size: 20),
-                  color: gameTree.canStepBackward() ? Colors.white : Colors.white24,
-                  onPressed: gameTree.canStepBackward() ? onGoToStart : null,
-                  tooltip: 'Start of game',
-                  visualDensity: VisualDensity.compact,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_left, size: 22),
-                  color: gameTree.canStepBackward() ? Colors.white : Colors.white24,
-                  onPressed: gameTree.canStepBackward() ? onStepBackward : null,
-                  tooltip: 'Previous move',
-                  visualDensity: VisualDensity.compact,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right, size: 22),
-                  color: gameTree.canStepForward() ? Colors.white : Colors.white24,
-                  onPressed: gameTree.canStepForward() ? onStepForward : null,
-                  tooltip: 'Next move',
-                  visualDensity: VisualDensity.compact,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.last_page, size: 20),
-                  color: gameTree.canStepForward() ? Colors.white : Colors.white24,
-                  onPressed: gameTree.canStepForward() ? onGoToEnd : null,
-                  tooltip: 'End of current line',
-                  visualDensity: VisualDensity.compact,
-                ),
-                const Spacer(),
-                if (isExploringVariation)
+          if (isExploringVariation)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: const BoxDecoration(
+                color: Color(0xFF1C1C1C),
+                border: Border(bottom: BorderSide(color: Color(0xFF2C2C2C), width: 1)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Exploring variation line',
+                    style: TextStyle(color: Colors.white54, fontSize: 11),
+                  ),
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF007ACC),
@@ -78,12 +54,12 @@ class MoveTreeWidget extends StatelessWidget {
                       textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                     ),
                     icon: const Icon(Icons.undo, size: 14),
-                    label: const Text('Return to Game'),
+                    label: const Text('Return to Mainline'),
                     onPressed: onReturnToOriginal,
                   ),
-              ],
+                ],
+              ),
             ),
-          ),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),

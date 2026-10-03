@@ -1,5 +1,11 @@
 import 'engine_analysis.dart';
 
+enum MaiaThinkingProfile {
+  instant,
+  natural,
+  humanLike,
+}
+
 class EngineSettings {
   EngineType activeEngine;
   int threads;
@@ -13,6 +19,12 @@ class EngineSettings {
   Map<String, String> customUciOptions;
 
   String? selectedMaiaId;
+
+  // Play Mode specific settings
+  bool limitStrength;
+  int? uciElo;
+  int moveOverheadMs;
+  MaiaThinkingProfile maiaThinkingProfile;
 
   // Arrowhead and presentation settings
   ArrowheadType arrowheadType;
@@ -34,6 +46,10 @@ class EngineSettings {
     this.smartPruningFactor,
     Map<String, String>? customUciOptions,
     this.selectedMaiaId,
+    this.limitStrength = false,
+    this.uciElo,
+    this.moveOverheadMs = 10,
+    this.maiaThinkingProfile = MaiaThinkingProfile.humanLike,
     this.arrowheadType = ArrowheadType.winrate,
     this.arrowFilterLc0 = ArrowFilterLc0.all,
     this.arrowFilterOthers = ArrowFilterOthers.all,
@@ -66,6 +82,10 @@ class EngineSettings {
     double? smartPruningFactor,
     Map<String, String>? customUciOptions,
     Object? selectedMaiaId = _sentinel,
+    bool? limitStrength,
+    Object? uciElo = _sentinel,
+    int? moveOverheadMs,
+    MaiaThinkingProfile? maiaThinkingProfile,
     ArrowheadType? arrowheadType,
     ArrowFilterLc0? arrowFilterLc0,
     ArrowFilterOthers? arrowFilterOthers,
@@ -83,6 +103,10 @@ class EngineSettings {
       smartPruningFactor: smartPruningFactor ?? this.smartPruningFactor,
       customUciOptions: customUciOptions ?? Map.from(this.customUciOptions),
       selectedMaiaId: identical(selectedMaiaId, _sentinel) ? this.selectedMaiaId : (selectedMaiaId as String?),
+      limitStrength: limitStrength ?? this.limitStrength,
+      uciElo: identical(uciElo, _sentinel) ? this.uciElo : (uciElo as int?),
+      moveOverheadMs: moveOverheadMs ?? this.moveOverheadMs,
+      maiaThinkingProfile: maiaThinkingProfile ?? this.maiaThinkingProfile,
       arrowheadType: arrowheadType ?? this.arrowheadType,
       arrowFilterLc0: arrowFilterLc0 ?? this.arrowFilterLc0,
       arrowFilterOthers: arrowFilterOthers ?? this.arrowFilterOthers,
