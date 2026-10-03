@@ -59,9 +59,14 @@ class EngineArtifactInfo {
     this.installedSizeBytes = 0,
   });
 
-  bool get isInstalled => status == DownloadStatus.installed;
+  bool get isInstalled {
+    if (status != DownloadStatus.installed) return false;
+    if (isBundled) return true;
+    if (localExecutablePath.isEmpty) return false;
+    return File(localExecutablePath).existsSync();
+  }
   bool get isDownloading => status == DownloadStatus.downloading || status == DownloadStatus.verifying || status == DownloadStatus.installing;
-  bool get isBundled => isInstalled && (localExecutablePath.contains('/lib/') || localExecutablePath.endsWith('.so'));
+  bool get isBundled => status == DownloadStatus.installed && (localExecutablePath.contains('/lib/') || localExecutablePath.endsWith('.so'));
 
   EngineInstallationState get installationState {
     switch (status) {

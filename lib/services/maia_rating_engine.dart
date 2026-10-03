@@ -35,6 +35,15 @@ class MaiaRatingEngine {
 
   /// Loads the ONNX runtime model session if not already loaded.
   Future<bool> ensureModelLoaded(String modelPath) async {
+    if (modelPath.contains('.download')) {
+      developer.log(
+        'MaiaRatingEngine: Refusing to load temporary download path: $modelPath',
+        name: 'MaiaRatingEngine',
+        level: 900,
+      );
+      return false;
+    }
+
     if (_session != null && _loadedModelPath == modelPath) {
       return true;
     }

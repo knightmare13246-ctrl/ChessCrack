@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/engine_analysis.dart';
 import '../models/engine_download_model.dart';
+import 'maia3_model_paths.dart';
 import 'native_engine_runner.dart';
 
 class EngineDownloadService extends ChangeNotifier {
@@ -184,17 +185,19 @@ class EngineDownloadService extends ChangeNotifier {
     }
 
     // 4. Official Maia-3 Rating-Conditioned Model (for Moves by Rating)
-    final maia3Dir = Directory('${baseDir.path}/models/maia3');
-    if (!maia3Dir.existsSync()) maia3Dir.createSync(recursive: true);
-    final maia3Path = '${maia3Dir.path}/maia3_simplified.onnx';
-    final maia3Meta = '${maia3Dir.path}/metadata.json';
-    maiaRatingModelInfo.localExecutablePath = maia3Path;
-    maiaRatingModelInfo.metadataPath = maia3Meta;
+    _maia3Paths = Maia3ModelPaths.fromBaseDir(baseDir);
+    _maia3Paths!.ensureDirectoryExists();
+    _maia3Paths!.cleanupOrphanedDownload();
+    maiaRatingModelInfo.localExecutablePath = _maia3Paths!.finalModelPath;
+    maiaRatingModelInfo.metadataPath = _maia3Paths!.metadataPath;
     _checkMaiaRatingModelInstalledStatus();
 
     _initialized = true;
     notifyListeners();
   }
+
+  Maia3ModelPaths? _maia3Paths;
+  Maia3ModelPaths? get maia3Paths => _maia3Paths;
 
   Future<void> _checkInstalledStatus(EngineArtifactInfo info, EngineType type) async {
     try {
@@ -246,15 +249,28 @@ class EngineDownloadService extends ChangeNotifier {
   }
 
   void _checkMaiaRatingModelInstalledStatus() {
-    final file = File(maiaRatingModelInfo.localExecutablePath);
-    if (file.existsSync() && file.lengthSync() > 1000000) {
-      maiaRatingModelInfo.status = DownloadStatus.installed;
-      maiaRatingModelInfo.installedSizeBytes = file.lengthSync();
-      return;
+    // 1. Primary check: canonical Maia3 path
+    if (_maia3Paths != null) {
+      // Ensure localExecutablePath is always canonical, never pointing to any temp or download artifact
+      maiaRatingModelInfo.localExecutablePath = _maia3Paths!.finalModelPath;
+      maiaRatingModelInfo.metadataPath = _maia3Paths!.metadataPath;
+
+      if (_maia3Paths!.isModelValid()) {
+        maiaRatingModelInfo.status = DownloadStatus.installed;
+        maiaRatingModelInfo.installedSizeBytes = _maia3Paths!.finalModelFile.lengthSync();
+        return;
+      }
+    } else {
+      final file = File(maiaRatingModelInfo.localExecutablePath);
+      if (file.existsSync() && file.lengthSync() >= 1000000) {
+        maiaRatingModelInfo.status = DownloadStatus.installed;
+        maiaRatingModelInfo.installedSizeBytes = file.lengthSync();
+        return;
+      }
     }
 
+    // 2. Secondary check: fallback device locations (copy to canonical if found)
     final fallbackPaths = [
-      'maia3_simplified.onnx',
       '/sdcard/Android/data/org.chesscrack.app/files/maia3_simplified.onnx',
       '/data/local/tmp/maia3_simplified.onnx',
       '/sdcard/maia3_simplified.onnx',
@@ -262,11 +278,23 @@ class EngineDownloadService extends ChangeNotifier {
     ];
     for (final p in fallbackPaths) {
       final f = File(p);
-      if (f.existsSync() && f.lengthSync() > 1000000) {
-        maiaRatingModelInfo.status = DownloadStatus.installed;
-        maiaRatingModelInfo.installedSizeBytes = f.lengthSync();
-        maiaRatingModelInfo.localExecutablePath = p;
-        return;
+      if (f.existsSync() && f.lengthSync() >= 1000000) {
+        if (_maia3Paths != null) {
+          try {
+            // Copy fallback to canonical path to preserve single canonical source
+            f.copySync(_maia3Paths!.finalModelPath);
+            maiaRatingModelInfo.localExecutablePath = _maia3Paths!.finalModelPath;
+            maiaRatingModelInfo.status = DownloadStatus.installed;
+            maiaRatingModelInfo.installedSizeBytes = f.lengthSync();
+            return;
+          } catch (_) {
+            // If copy fails, use fallback directly
+            maiaRatingModelInfo.localExecutablePath = p;
+            maiaRatingModelInfo.status = DownloadStatus.installed;
+            maiaRatingModelInfo.installedSizeBytes = f.lengthSync();
+            return;
+          }
+        }
       }
     }
 
@@ -640,8 +668,9 @@ class EngineDownloadService extends ChangeNotifier {
     maiaRatingModelInfo.errorMessage = null;
     notifyListeners();
 
-    final targetFile = File(maiaRatingModelInfo.localExecutablePath);
-    final tempFile = File('${maiaRatingModelInfo.localExecutablePath}.download');
+    final paths = _maia3Paths;
+    final targetFile = paths != null ? paths.finalModelFile : File(maiaRatingModelInfo.localExecutablePath);
+    final tempFile = paths != null ? paths.tempDownloadFile : File('${maiaRatingModelInfo.localExecutablePath}.download');
 
     try {
       final success = await _downloadFile(
@@ -673,6 +702,11 @@ class EngineDownloadService extends ChangeNotifier {
       if (targetFile.existsSync()) targetFile.deleteSync();
       await tempFile.rename(targetFile.path);
 
+      // Verify canonical paths are updated
+      maiaRatingModelInfo.localExecutablePath = targetFile.path;
+      final metadataFile = paths != null ? paths.metadataFile : File(maiaRatingModelInfo.metadataPath);
+      maiaRatingModelInfo.metadataPath = metadataFile.path;
+
       final meta = {
         'id': maiaRatingModelInfo.id,
         'name': maiaRatingModelInfo.name,
@@ -683,7 +717,7 @@ class EngineDownloadService extends ChangeNotifier {
         'installedDate': DateTime.now().toIso8601String(),
         'fileSize': targetFile.lengthSync(),
       };
-      await File(maiaRatingModelInfo.metadataPath).writeAsString(jsonEncode(meta));
+      await metadataFile.writeAsString(jsonEncode(meta));
 
       maiaRatingModelInfo.status = DownloadStatus.installed;
       maiaRatingModelInfo.installedSizeBytes = targetFile.lengthSync();
@@ -707,10 +741,12 @@ class EngineDownloadService extends ChangeNotifier {
   }
 
   Future<void> deleteMaiaRatingModel() async {
-    final file = File(maiaRatingModelInfo.localExecutablePath);
+    final paths = _maia3Paths;
+    final file = paths != null ? paths.finalModelFile : File(maiaRatingModelInfo.localExecutablePath);
     if (file.existsSync()) file.deleteSync();
-    final meta = File(maiaRatingModelInfo.metadataPath);
+    final meta = paths != null ? paths.metadataFile : File(maiaRatingModelInfo.metadataPath);
     if (meta.existsSync()) meta.deleteSync();
+    if (paths != null) paths.cleanupOrphanedDownload();
     _checkMaiaRatingModelInstalledStatus();
     notifyListeners();
   }

@@ -315,11 +315,14 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
     final currentRev = currentPos.hashCode;
 
     final modelInfo = _downloadService.maiaRatingModelInfo;
+    final modelPath = _downloadService.maia3Paths?.finalModelPath ?? modelInfo.localExecutablePath;
     final bool isInstalled = modelInfo.isInstalled &&
-        File(modelInfo.localExecutablePath).existsSync();
+        !modelPath.contains('.download') &&
+        File(modelPath).existsSync() &&
+        File(modelPath).lengthSync() >= 1000000;
     if (kDebugMode) {
       developer.log(
-        'FEN: $currentFen, isInstalled: $isInstalled, path: ${modelInfo.localExecutablePath}',
+        'FEN: $currentFen, isInstalled: $isInstalled, path: $modelPath',
         name: 'ChessAnalysisScreen',
       );
     }
@@ -391,7 +394,7 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
         position: currentPos,
         positionRevision: currentRev,
         activeRating: _activeRating,
-        modelPath: modelInfo.localExecutablePath,
+        modelPath: modelPath,
         priorityUciMoves: priorityMoves,
       );
 

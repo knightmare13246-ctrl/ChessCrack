@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nibbler_chess/models/maia_dual_analysis.dart';
 import 'package:nibbler_chess/services/engine_download_service.dart';
+import 'package:nibbler_chess/services/maia3_model_paths.dart';
 import 'package:nibbler_chess/services/maia_rating_engine.dart';
 import 'package:nibbler_chess/ui/widgets/moves_by_rating_chart.dart';
 
@@ -304,6 +306,34 @@ void main() {
       expect(modelInfo.downloadUrl, contains('maia3_simplified.onnx'));
       expect(modelInfo.abi, equals('all'));
       expect(modelInfo.expectedSizeBytes, equals(44 * 1024 * 1024));
+    });
+
+    test('Maia3ModelPaths resolves canonical paths and prevents .download leakage', () {
+      final tempDir = Directory.systemTemp.createTempSync('maia3_test_');
+      addTearDown(() => tempDir.deleteSync(recursive: true));
+
+      final paths = Maia3ModelPaths.fromBaseDir(tempDir);
+      paths.ensureDirectoryExists();
+
+      expect(paths.finalModelPath, contains('maia3_simplified.onnx'));
+      expect(paths.finalModelPath.endsWith('.download'), isFalse);
+      expect(paths.tempDownloadPath, equals('${paths.finalModelPath}.download'));
+      expect(paths.metadataPath, contains('metadata.json'));
+
+      // Test orphaned .download cleanup
+      final orphanFile = paths.tempDownloadFile;
+      orphanFile.writeAsStringSync('dummy incomplete download');
+      expect(orphanFile.existsSync(), isTrue);
+
+      paths.cleanupOrphanedDownload();
+      expect(orphanFile.existsSync(), isFalse);
+
+      // Validation fails when model file does not exist
+      expect(paths.isModelValid(), isFalse);
+
+      // Create valid dummy file >= 1MB
+      paths.finalModelFile.writeAsBytesSync(List<int>.filled(1000005, 0));
+      expect(paths.isModelValid(), isTrue);
     });
 
     test('MaiaRatingSweepSnapshot.toDataset converts snapshot cleanly with authentic curves', () {
