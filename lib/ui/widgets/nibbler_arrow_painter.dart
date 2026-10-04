@@ -29,7 +29,7 @@ class NibblerArrowPainter extends CustomPainter {
     this.arrowheadType = ArrowheadType.winrate,
     this.engineType = EngineType.lc0,
     this.continuationPlan,
-    this.showPvContinuation = true,
+    this.showPvContinuation = false,
     this.selectedPvIndex,
   }) : candidateArrows = candidateArrows ?? _fromPvLines(pvLines, positionRevision, analysisRequestId, position);
 

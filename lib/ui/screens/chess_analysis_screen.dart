@@ -81,7 +81,7 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
 
   // PV Continuation Multi-step Plan state
   int? _selectedPvIndex;
-  bool _showPvContinuation = true;
+  bool _showPvContinuation = false;
 
   late TabController _tabController;
 

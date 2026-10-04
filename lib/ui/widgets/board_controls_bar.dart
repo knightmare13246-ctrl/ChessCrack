@@ -33,7 +33,7 @@ class BoardControlsBar extends StatelessWidget {
     this.canStepBackward = false,
     this.canStepForward = false,
     this.isAutoPlaying = false,
-    this.isPlanActive = true,
+    this.isPlanActive = false,
   });
 
   @override

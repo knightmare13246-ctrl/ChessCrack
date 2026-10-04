@@ -59,7 +59,7 @@ class EngineSettings {
     this.arrowFilterLc0 = ArrowFilterLc0.all,
     this.arrowFilterOthers = ArrowFilterOthers.all,
     Set<String>? infoboxStats,
-    this.showPvContinuation = true,
+    this.showPvContinuation = false,
     this.pvContinuationDepth = 4,
     this.pvContinuationFilter = PvContinuationFilter.all,
   })  : customUciOptions = customUciOptions ?? {},

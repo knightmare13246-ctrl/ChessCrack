@@ -42,7 +42,7 @@ class NibblerBoard extends StatefulWidget {
     required this.onMove,
     this.animationDurationMs = 200,
     this.analysisListenable,
-    this.showPvContinuation = true,
+    this.showPvContinuation = false,
     this.selectedPvIndex,
     this.continuationPlan,
   });
