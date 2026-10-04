@@ -326,10 +326,6 @@ class _ChessPlayScreenState extends State<ChessPlayScreen> {
         body: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final w = constraints.maxWidth;
-              final h = constraints.maxHeight;
-              final boardSize = math.min(w - 16, h - 230).clamp(160.0, 600.0);
-
               final isFlipped = _controller.playerColor == PieceColor.black;
               final opponentSide = isFlipped ? ClockSide.white : ClockSide.black;
               final playerSide = isFlipped ? ClockSide.black : ClockSide.white;
@@ -353,22 +349,27 @@ class _ChessPlayScreenState extends State<ChessPlayScreen> {
 
                   // Chess Board Area
                   Expanded(
-                    child: Center(
-                      child: SizedBox(
-                        width: boardSize,
-                        height: boardSize,
-                        child: NibblerBoard(
-                          position: _controller.position,
-                          lastMove: _controller.moveHistory.isNotEmpty ? _controller.moveHistory.last : null,
-                          isFlipped: isFlipped,
-                          boardTheme: _themeService.activeBoard,
-                          pieceSet: _themeService.activePieceSet,
-                          candidateArrows: _controller.hintArrow != null ? [_controller.hintArrow!] : const [],
-                          arrowheadType: ArrowheadType.winrate,
-                          engineType: _controller.opponentEngine,
-                          onMove: (move) => _controller.playPlayerMove(move),
-                        ),
-                      ),
+                    child: LayoutBuilder(
+                      builder: (context, boardBox) {
+                        final size = math.min(boardBox.maxWidth - 16, boardBox.maxHeight - 8).clamp(140.0, 600.0);
+                        return Center(
+                          child: SizedBox(
+                            width: size,
+                            height: size,
+                            child: NibblerBoard(
+                              position: _controller.position,
+                              lastMove: _controller.moveHistory.isNotEmpty ? _controller.moveHistory.last : null,
+                              isFlipped: isFlipped,
+                              boardTheme: _themeService.activeBoard,
+                              pieceSet: _themeService.activePieceSet,
+                              candidateArrows: _controller.hintArrow != null ? [_controller.hintArrow!] : const [],
+                              arrowheadType: ArrowheadType.winrate,
+                              engineType: _controller.opponentEngine,
+                              onMove: (move) => _controller.playPlayerMove(move),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
 

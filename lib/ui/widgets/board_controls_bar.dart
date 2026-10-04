@@ -38,11 +38,6 @@ class BoardControlsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final buttonStyle = IconButton.styleFrom(
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      padding: EdgeInsets.zero,
-    );
-
     return Container(
       height: 40,
       decoration: const BoxDecoration(
@@ -52,111 +47,207 @@ class BoardControlsBar extends StatelessWidget {
           bottom: BorderSide(color: Color(0xFF242426), width: 0.8),
         ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          // 1. Go to Start of Game
-          IconButton(
-            icon: const Icon(Icons.first_page, size: 20),
-            color: canStepBackward ? Colors.white70 : Colors.white24,
-            onPressed: canStepBackward ? onGoToStart : null,
-            tooltip: 'Start of game (|<)',
-            style: buttonStyle,
-            constraints: const BoxConstraints(minWidth: 34, minHeight: 40),
-          ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          // If available width is very narrow (< 350dp), collapse secondary settings into a menu
+          final useOverflowMenu = width < 350 && (onOpenArrowSettings != null || onOpenEngineSettings != null);
 
-          // 2. Previous Move (Backward)
-          IconButton(
-            icon: const Icon(Icons.chevron_left, size: 22),
-            color: canStepBackward ? Colors.white : Colors.white24,
-            onPressed: canStepBackward ? onStepBackward : null,
-            tooltip: 'Previous move (<)',
-            style: buttonStyle,
-            constraints: const BoxConstraints(minWidth: 34, minHeight: 40),
-          ),
+          Widget wrapBtn(Widget btn) => Expanded(child: btn);
 
-          // 3. Play / Pause Auto-play
-          IconButton(
-            icon: Icon(
-              isAutoPlaying ? Icons.pause : Icons.play_arrow,
-              size: 20,
-              color: const Color(0xFF00D2BE),
-            ),
-            onPressed: (canStepForward || isAutoPlaying) ? onToggleAutoPlay : null,
-            tooltip: isAutoPlaying ? 'Pause auto-play (⏸)' : 'Play moves (▶)',
-            style: buttonStyle,
-            constraints: const BoxConstraints(minWidth: 34, minHeight: 40),
-          ),
-
-          // 4. Next Move (Forward)
-          IconButton(
-            icon: const Icon(Icons.chevron_right, size: 22),
-            color: canStepForward ? Colors.white : Colors.white24,
-            onPressed: canStepForward ? onStepForward : null,
-            tooltip: 'Next move (>)',
-            style: buttonStyle,
-            constraints: const BoxConstraints(minWidth: 34, minHeight: 40),
-          ),
-
-          // 5. Go to End of Line
-          IconButton(
-            icon: const Icon(Icons.last_page, size: 20),
-            color: canStepForward ? Colors.white70 : Colors.white24,
-            onPressed: canStepForward ? onGoToEnd : null,
-            tooltip: 'End of line (>|)',
-            style: buttonStyle,
-            constraints: const BoxConstraints(minWidth: 34, minHeight: 40),
-          ),
-
-          // Divider
-          Container(
-            height: 18,
-            width: 1,
-            color: const Color(0xFF333333),
-            margin: const EdgeInsets.symmetric(horizontal: 2),
-          ),
-
-          // 6. Flip Board
-          IconButton(
-            icon: const Icon(Icons.swap_vert, size: 19),
-            color: Colors.white70,
-            onPressed: onFlipBoard,
-            tooltip: 'Flip board orientation (⇅)',
-            style: buttonStyle,
-            constraints: const BoxConstraints(minWidth: 34, minHeight: 40),
-          ),
-          if (onTogglePlan != null)
-            IconButton(
-              icon: Icon(
-                Icons.alt_route,
-                size: 18,
-                color: isPlanActive ? const Color(0xFF00D2BE) : Colors.white38,
+          final List<Widget> children = [
+            // 1. Go to Start of Game
+            wrapBtn(
+              IconButton(
+                icon: const Icon(Icons.first_page, size: 20),
+                color: canStepBackward ? Colors.white70 : Colors.white24,
+                onPressed: canStepBackward ? onGoToStart : null,
+                tooltip: 'Start of game (|<)',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
               ),
-              onPressed: onTogglePlan,
-              tooltip: isPlanActive ? 'Continuation Plan: ON (tap for hint/toggle)' : 'Continuation Plan: OFF (tap to show plan)',
-              style: buttonStyle,
-              constraints: const BoxConstraints(minWidth: 34, minHeight: 40),
             ),
-          if (onOpenArrowSettings != null)
-            IconButton(
-              icon: const Icon(Icons.north_east, size: 18),
-              color: const Color(0xFF00D2BE),
-              onPressed: onOpenArrowSettings,
-              tooltip: 'Candidate Arrows & MultiPV',
-              style: buttonStyle,
-              constraints: const BoxConstraints(minWidth: 34, minHeight: 40),
+
+            // 2. Previous Move (Backward)
+            wrapBtn(
+              IconButton(
+                icon: const Icon(Icons.chevron_left, size: 22),
+                color: canStepBackward ? Colors.white : Colors.white24,
+                onPressed: canStepBackward ? onStepBackward : null,
+                tooltip: 'Previous move (<)',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
             ),
-          if (onOpenEngineSettings != null)
-            IconButton(
-              icon: const Icon(Icons.tune, size: 18),
-              color: Colors.white70,
-              onPressed: onOpenEngineSettings,
-              tooltip: 'Engine Settings & Threads',
-              style: buttonStyle,
-              constraints: const BoxConstraints(minWidth: 34, minHeight: 40),
+
+            // 3. Play / Pause Auto-play
+            wrapBtn(
+              IconButton(
+                icon: Icon(
+                  isAutoPlaying ? Icons.pause : Icons.play_arrow,
+                  size: 20,
+                  color: const Color(0xFF00D2BE),
+                ),
+                onPressed: (canStepForward || isAutoPlaying) ? onToggleAutoPlay : null,
+                tooltip: isAutoPlaying ? 'Pause auto-play (⏸)' : 'Play moves (▶)',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
             ),
-        ],
+
+            // 4. Next Move (Forward)
+            wrapBtn(
+              IconButton(
+                icon: const Icon(Icons.chevron_right, size: 22),
+                color: canStepForward ? Colors.white : Colors.white24,
+                onPressed: canStepForward ? onStepForward : null,
+                tooltip: 'Next move (>)',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ),
+
+            // 5. Go to End of Line
+            wrapBtn(
+              IconButton(
+                icon: const Icon(Icons.last_page, size: 20),
+                color: canStepForward ? Colors.white70 : Colors.white24,
+                onPressed: canStepForward ? onGoToEnd : null,
+                tooltip: 'End of line (>|)',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ),
+
+            // Divider
+            Container(
+              height: 18,
+              width: 1,
+              color: const Color(0xFF333333),
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+            ),
+
+            // 6. Flip Board
+            wrapBtn(
+              IconButton(
+                icon: const Icon(Icons.swap_vert, size: 19),
+                color: Colors.white70,
+                onPressed: onFlipBoard,
+                tooltip: 'Flip board orientation (⇅)',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ),
+          ];
+
+          // 7. Continuation Plan toggle
+          if (onTogglePlan != null) {
+            children.add(
+              wrapBtn(
+                IconButton(
+                  icon: Icon(
+                    Icons.alt_route,
+                    size: 18,
+                    color: isPlanActive ? const Color(0xFF00D2BE) : Colors.white38,
+                  ),
+                  onPressed: onTogglePlan,
+                  tooltip: isPlanActive
+                      ? 'Continuation Plan: ON (tap for hint/toggle)'
+                      : 'Continuation Plan: OFF (tap to show plan)',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ),
+            );
+          }
+
+          if (useOverflowMenu) {
+            // Secondary settings collapsed into an overflow menu on tight screens
+            children.add(
+              wrapBtn(
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_horiz, size: 19, color: Colors.white70),
+                  tooltip: 'More Controls',
+                  color: const Color(0xFF222226),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onSelected: (val) {
+                    if (val == 'arrows') onOpenArrowSettings?.call();
+                    if (val == 'engine') onOpenEngineSettings?.call();
+                  },
+                  itemBuilder: (context) => [
+                    if (onOpenArrowSettings != null)
+                      const PopupMenuItem(
+                        value: 'arrows',
+                        child: Row(
+                          children: [
+                            Icon(Icons.north_east, size: 18, color: Color(0xFF00D2BE)),
+                            SizedBox(width: 8),
+                            Text('Candidate Arrows & MultiPV', style: TextStyle(color: Colors.white, fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                    if (onOpenEngineSettings != null)
+                      const PopupMenuItem(
+                        value: 'engine',
+                        child: Row(
+                          children: [
+                            Icon(Icons.tune, size: 18, color: Colors.white70),
+                            SizedBox(width: 8),
+                            Text('Engine Settings & Threads', style: TextStyle(color: Colors.white, fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          } else {
+            // 8. Arrow Settings
+            if (onOpenArrowSettings != null) {
+              children.add(
+                wrapBtn(
+                  IconButton(
+                    icon: const Icon(Icons.north_east, size: 18),
+                    color: const Color(0xFF00D2BE),
+                    onPressed: onOpenArrowSettings,
+                    tooltip: 'Candidate Arrows & MultiPV',
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ),
+              );
+            }
+            // 9. Engine Settings
+            if (onOpenEngineSettings != null) {
+              children.add(
+                wrapBtn(
+                  IconButton(
+                    icon: const Icon(Icons.tune, size: 18),
+                    color: Colors.white70,
+                    onPressed: onOpenEngineSettings,
+                    tooltip: 'Engine Settings & Threads',
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ),
+              );
+            }
+          }
+
+          return Row(
+            children: children,
+          );
+        },
       ),
     );
   }

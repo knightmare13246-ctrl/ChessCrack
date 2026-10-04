@@ -84,9 +84,12 @@ class _EngineSettingsDialogState extends State<EngineSettingsDialog> {
         children: [
           Icon(Icons.tune, color: Color(0xFF00D2BE), size: 20),
           SizedBox(width: 8),
-          Text(
-            'ChessCrack Engine Settings',
-            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+          Expanded(
+            child: Text(
+              'ChessCrack Engine Settings',
+              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),

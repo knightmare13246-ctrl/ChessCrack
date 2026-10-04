@@ -1126,10 +1126,11 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
               // Dual-Pane Landscape Layout
               final maxPaneHeight = availableHeight - 44.0;
               const fenHeight = 30.0;
-              const controlsHeight = 38.0;
-              final maxBoardHeight = maxPaneHeight - fenHeight - controlsHeight - 16.0;
+              const controlsHeight = 40.0;
+              // Generous margin for borders, paddings and system insets
+              final maxBoardHeight = (maxPaneHeight - fenHeight - controlsHeight - 24.0).clamp(120.0, maxPaneHeight);
               final maxBoardWidth = (availableWidth * 0.50) - evalBarWidth - spacing - (horizontalPadding * 2);
-              final boardSize = math.min(maxBoardWidth, maxBoardHeight).clamp(160.0, 720.0);
+              final boardSize = math.min(maxBoardWidth, maxBoardHeight).clamp(120.0, 720.0);
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1141,12 +1142,14 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
                       children: [
                         SizedBox(
                           width: boardSize + evalBarWidth + spacing + (horizontalPadding * 2),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 6),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                          child: SingleChildScrollView(
+                            physics: const ClampingScrollPhysics(),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 6),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                    NibblerEvalBar(
                                      evaluationNotifier: _engineService.evaluationNotifier,
@@ -1211,7 +1214,8 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
                             ],
                           ),
                         ),
-                        const VerticalDivider(width: 1, color: Color(0xFF282828)),
+                      ),
+                      const VerticalDivider(width: 1, color: Color(0xFF282828)),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1323,7 +1327,7 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
 
             final maxBoardWidth = availableWidth - (horizontalPadding * 2) - evalBarWidth - spacing;
             final maxBoardHeight = availableHeight - verticalFixed;
-            final boardSize = math.min(maxBoardWidth, maxBoardHeight > 180.0 ? maxBoardHeight : maxBoardWidth).clamp(180.0, 640.0);
+            final boardSize = math.min(maxBoardWidth, math.max(140.0, maxBoardHeight)).clamp(140.0, maxBoardWidth);
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1693,14 +1697,12 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
               tooltip: 'Paste PGN',
               visualDensity: VisualDensity.compact,
             ),
-          ],
-          IconButton(
-            icon: const Icon(Icons.swap_vert, color: Colors.white70, size: 20),
-            onPressed: _flipBoard,
-            tooltip: 'Flip Board',
-            visualDensity: VisualDensity.compact,
-          ),
-          if (!isNarrow) ...[
+            IconButton(
+              icon: const Icon(Icons.swap_vert, color: Colors.white70, size: 20),
+              onPressed: _flipBoard,
+              tooltip: 'Flip Board',
+              visualDensity: VisualDensity.compact,
+            ),
             IconButton(
               icon: const Icon(Icons.tune, color: Colors.white70, size: 19),
               onPressed: _openEngineSettingsDialog,
@@ -1725,6 +1727,9 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
             color: const Color(0xFF222222),
             onSelected: (value) {
               switch (value) {
+                case 'flip':
+                  _flipBoard();
+                  break;
                 case 'engine_manager':
                   _openEngineManagerDialog();
                   break;
@@ -1750,6 +1755,16 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
             },
             itemBuilder: (context) => [
               if (isNarrow) ...[
+                const PopupMenuItem(
+                  value: 'flip',
+                  child: Row(
+                    children: [
+                      Icon(Icons.swap_vert, color: Colors.white70, size: 18),
+                      SizedBox(width: 8),
+                      Text('Flip Board', style: TextStyle(color: Colors.white, fontSize: 13)),
+                    ],
+                  ),
+                ),
                 const PopupMenuItem(
                   value: 'engine_manager',
                   child: Row(

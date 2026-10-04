@@ -121,82 +121,91 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
                   // Section 1: Arrow Quantity (MultiPV)
                   _buildSectionHeader('ARROW QUANTITY (MULTIPV LINES)'),
                   const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF222222),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.white10),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Candidate Moves / Arrows:', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
-                            Text('$_multiPv', style: const TextStyle(color: Color(0xFF00D2BE), fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        // Direct 1-tap buttons for 1, 2, 3, 4, 5
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [1, 2, 3, 4, 5].map((pv) {
-                            final isSel = _multiPv == pv;
-                            return GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () {
-                                setState(() {
-                                  _multiPv = pv;
-                                  _selectedFilterOthers = ArrowFilterOthers.all;
-                                  if (isLc0 && _selectedFilterLc0 != ArrowFilterLc0.all) {
-                                    _selectedFilterLc0 = ArrowFilterLc0.all;
-                                  }
-                                });
-                                _notifyChange();
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                                decoration: BoxDecoration(
-                                  color: isSel ? const Color(0xFF00D2BE) : const Color(0xFF262626),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                    color: isSel ? const Color(0xFF00D2BE) : const Color(0xFF444444),
-                                    width: 1.2,
+                  Material(
+                    color: const Color(0xFF222222),
+                    borderRadius: BorderRadius.circular(8),
+                    clipBehavior: Clip.antiAlias,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Candidate Moves / Arrows:', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                              Text('$_multiPv', style: const TextStyle(color: Color(0xFF00D2BE), fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          // Direct 1-tap buttons for 1, 2, 3, 4, 5
+                          Row(
+                            children: [1, 2, 3, 4, 5].map((pv) {
+                              final isSel = _multiPv == pv;
+                              return Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () {
+                                      setState(() {
+                                        _multiPv = pv;
+                                        _selectedFilterOthers = ArrowFilterOthers.all;
+                                        if (isLc0 && _selectedFilterLc0 != ArrowFilterLc0.all) {
+                                          _selectedFilterLc0 = ArrowFilterLc0.all;
+                                        }
+                                      });
+                                      _notifyChange();
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 7),
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color: isSel ? const Color(0xFF00D2BE) : const Color(0xFF262626),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: isSel ? const Color(0xFF00D2BE) : const Color(0xFF444444),
+                                          width: 1.2,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '$pv',
+                                        style: TextStyle(
+                                          color: isSel ? Colors.black : Colors.white,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                                child: Text(
-                                  '$pv',
-                                  style: TextStyle(
-                                    color: isSel ? Colors.black : Colors.white,
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                        const SizedBox(height: 6),
-                        Slider(
-                          value: _multiPv.toDouble().clamp(1.0, 10.0),
-                          min: 1,
-                          max: 10,
-                          divisions: 9,
-                          activeColor: const Color(0xFF00D2BE),
-                          inactiveColor: Colors.white24,
-                          onChanged: (val) {
-                            setState(() {
-                              _multiPv = val.round();
-                              _selectedFilterOthers = ArrowFilterOthers.all;
-                              if (isLc0 && _selectedFilterLc0 != ArrowFilterLc0.all) {
-                                _selectedFilterLc0 = ArrowFilterLc0.all;
-                              }
-                            });
-                            _notifyChange();
-                          },
-                        ),
-                      ],
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 6),
+                          Slider(
+                            value: _multiPv.toDouble().clamp(1.0, 10.0),
+                            min: 1,
+                            max: 10,
+                            divisions: 9,
+                            activeColor: const Color(0xFF00D2BE),
+                            inactiveColor: Colors.white24,
+                            onChanged: (val) {
+                              setState(() {
+                                _multiPv = val.round();
+                                _selectedFilterOthers = ArrowFilterOthers.all;
+                                if (isLc0 && _selectedFilterLc0 != ArrowFilterLc0.all) {
+                                  _selectedFilterLc0 = ArrowFilterLc0.all;
+                                }
+                              });
+                              _notifyChange();
+                            },
+                          ),
+                        ],
+                      ),
                     ),
                   ),
 
@@ -205,77 +214,86 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
                   // Section 1.5: PV Continuation & Maneuver Plan
                   _buildSectionHeader('PV CONTINUATION & MANEUVER PLAN (ENGINE IDEA)'),
                   const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF222222),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.white10),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        SwitchListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text(
-                            'Show Multi-Step Plan / Idea Arrows',
-                            style: TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.bold),
+                  Material(
+                    color: const Color(0xFF222222),
+                    borderRadius: BorderRadius.circular(8),
+                    clipBehavior: Clip.antiAlias,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SwitchListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text(
+                              'Show Multi-Step Plan / Idea Arrows',
+                              style: TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.bold),
+                            ),
+                            subtitle: const Text(
+                              'Visualizes future engine PV moves as an idea / maneuver chain with step numbers',
+                              style: TextStyle(color: Colors.white60, fontSize: 11),
+                            ),
+                            value: _showPvContinuation,
+                            activeColor: const Color(0xFF00D2BE),
+                            onChanged: (val) {
+                              setState(() => _showPvContinuation = val);
+                              _notifyChange();
+                            },
                           ),
-                          subtitle: const Text(
-                            'Visualizes future engine PV moves as an idea / maneuver chain with step numbers',
-                            style: TextStyle(color: Colors.white60, fontSize: 11),
-                          ),
-                          value: _showPvContinuation,
-                          activeColor: const Color(0xFF00D2BE),
-                          onChanged: (val) {
-                            setState(() => _showPvContinuation = val);
-                            _notifyChange();
-                          },
-                        ),
-                        if (_showPvContinuation) ...[
-                          const Divider(color: Colors.white12),
-                          const SizedBox(height: 4),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('Continuation Depth (Plies):', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
-                              Text('$_pvContinuationDepth plies', style: const TextStyle(color: Color(0xFF00D2BE), fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [2, 4, 6, 8].map((depth) {
-                              final isSel = _pvContinuationDepth == depth;
-                              return GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () {
-                                  setState(() => _pvContinuationDepth = depth);
-                                  _notifyChange();
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-                                  decoration: BoxDecoration(
-                                    color: isSel ? const Color(0xFF00D2BE) : const Color(0xFF262626),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(
-                                      color: isSel ? const Color(0xFF00D2BE) : const Color(0xFF444444),
-                                      width: 1.2,
+                          if (_showPvContinuation) ...[
+                            const Divider(color: Colors.white12),
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('Continuation Depth (Plies):', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                                Text('$_pvContinuationDepth plies', style: const TextStyle(color: Color(0xFF00D2BE), fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [2, 4, 6, 8].map((depth) {
+                                final isSel = _pvContinuationDepth == depth;
+                                return Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTap: () {
+                                        setState(() => _pvContinuationDepth = depth);
+                                        _notifyChange();
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(vertical: 7),
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          color: isSel ? const Color(0xFF00D2BE) : const Color(0xFF262626),
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(
+                                            color: isSel ? const Color(0xFF00D2BE) : const Color(0xFF444444),
+                                            width: 1.2,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '$depth plies',
+                                          style: TextStyle(
+                                            color: isSel ? Colors.black : Colors.white,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 11.5,
+                                          ),
+                                          maxLines: 1,
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                  child: Text(
-                                    '$depth plies',
-                                    style: TextStyle(
-                                      color: isSel ? Colors.black : Colors.white,
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 12.5,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
+                                );
+                              }).toList(),
+                            ),
                           const SizedBox(height: 10),
                           const Divider(color: Colors.white12),
                           const SizedBox(height: 4),
@@ -318,6 +336,7 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
                       ],
                     ),
                   ),
+                ),
 
                   const SizedBox(height: 16),
 

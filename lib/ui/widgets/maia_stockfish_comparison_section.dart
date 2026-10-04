@@ -288,29 +288,36 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 5,
-                            height: 5,
-                            decoration: BoxDecoration(
-                              color: item.color,
-                              shape: BoxShape.circle,
+                      Expanded(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 5,
+                              height: 5,
+                              decoration: BoxDecoration(
+                                color: item.color,
+                                shape: BoxShape.circle,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            item.san,
-                            style: TextStyle(
-                              color: item.color,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 10.5,
-                              fontFamily: 'monospace',
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                item.san,
+                                style: TextStyle(
+                                  color: item.color,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 10.5,
+                                  fontFamily: 'monospace',
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: 4),
                       Text(
                         '${item.probability.toStringAsFixed(1)}%',
                         style: const TextStyle(
@@ -459,15 +466,20 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        firstSan.isNotEmpty ? firstSan : firstUci,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 10.5,
-                          fontFamily: 'monospace',
+                      Expanded(
+                        child: Text(
+                          firstSan.isNotEmpty ? firstSan : firstUci,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 10.5,
+                            fontFamily: 'monospace',
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      const SizedBox(width: 4),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 3.5, vertical: 1),
                         decoration: BoxDecoration(

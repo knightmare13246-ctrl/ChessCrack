@@ -21,6 +21,9 @@ void main() {
   });
 
   testWidgets('ArrowSettingsDialog opens and renders correctly', (WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     final settings = EngineSettings(activeEngine: EngineType.lc0);
     await tester.pumpWidget(
       MaterialApp(
@@ -39,17 +42,18 @@ void main() {
       ),
     );
 
-    await tester.binding.setSurfaceSize(const Size(800, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
     await tester.tap(find.text('Open'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('Arrow & Telemetry Settings'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('ARROWHEAD TYPE (BADGE DISPLAY)'), 50);
     expect(find.text('ARROWHEAD TYPE (BADGE DISPLAY)'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Winrate'), 50);
     expect(find.text('Winrate'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Policy'), 50);
     expect(find.text('Policy'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Node %'), 50);
     expect(find.text('Node %'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.close));
@@ -81,11 +85,11 @@ void main() {
     );
 
     await tester.tap(find.text('Open'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Policy'), 200, scrollable: find.byType(Scrollable));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Policy'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
 
     expect(updatedResult, isNotNull);
     expect(updatedResult!.arrowheadType, equals(ArrowheadType.policy));

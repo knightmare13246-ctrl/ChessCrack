@@ -41,10 +41,14 @@ class MoveTreeWidget extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Exploring variation line',
-                    style: TextStyle(color: Colors.white54, fontSize: 11),
+                  const Flexible(
+                    child: Text(
+                      'Exploring variation line',
+                      style: TextStyle(color: Colors.white54, fontSize: 11),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
+                  const SizedBox(width: 8),
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF007ACC),
