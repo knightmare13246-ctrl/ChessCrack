@@ -36,6 +36,10 @@ class EngineAnalysisPanel extends StatelessWidget {
   final String? highlightedUciMove;
   final VoidCallback? onOpenEngineSettings;
   final VoidCallback? onOpenArrowSettings;
+  final int? selectedPvIndex;
+  final ValueChanged<int>? onSelectPvLine;
+  final bool showPvContinuation;
+  final VoidCallback? onTogglePlan;
 
   const EngineAnalysisPanel({
     super.key,
@@ -61,6 +65,10 @@ class EngineAnalysisPanel extends StatelessWidget {
     this.highlightedUciMove,
     this.onOpenEngineSettings,
     this.onOpenArrowSettings,
+    this.selectedPvIndex,
+    this.onSelectPvLine,
+    this.showPvContinuation = true,
+    this.onTogglePlan,
   });
 
   @override
@@ -184,6 +192,42 @@ class EngineAnalysisPanel extends StatelessWidget {
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                   ),
+                if (onTogglePlan != null) ...[
+                  const SizedBox(width: 4),
+                  GestureDetector(
+                    onTap: onTogglePlan,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                      decoration: BoxDecoration(
+                        color: showPvContinuation ? const Color(0xFF003830) : const Color(0xFF262626),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: showPvContinuation ? const Color(0xFF00D2BE) : const Color(0xFF444444),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.alt_route,
+                            color: showPvContinuation ? const Color(0xFF00D2BE) : Colors.white60,
+                            size: 13,
+                          ),
+                          const SizedBox(width: 3.5),
+                          Text(
+                            showPvContinuation ? 'Plan' : 'Moves only',
+                            style: TextStyle(
+                              color: showPvContinuation ? const Color(0xFF00D2BE) : Colors.white70,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(width: 4),
                 // Pause / Analyze toggle button
                 GestureDetector(
@@ -612,13 +656,35 @@ class EngineAnalysisPanel extends StatelessWidget {
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2.5),
-      child: Wrap(
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 2.0,
-        runSpacing: 3.0,
-        children: widgets,
+    final isPlanSelected = showPvContinuation &&
+        (selectedPvIndex == line.multipv || (selectedPvIndex == null && line.multipv == 1));
+
+    return InkWell(
+      onTap: onSelectPvLine != null ? () => onSelectPvLine!(line.multipv) : null,
+      borderRadius: BorderRadius.circular(4),
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 1.5),
+        padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
+        decoration: BoxDecoration(
+          color: isPlanSelected ? const Color(0xFF003830).withValues(alpha: 0.35) : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+          border: isPlanSelected
+              ? Border.all(color: const Color(0xFF00D2BE).withValues(alpha: 0.5), width: 0.8)
+              : null,
+        ),
+        child: Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 2.0,
+          runSpacing: 3.0,
+          children: [
+            if (isPlanSelected)
+              const Padding(
+                padding: EdgeInsets.only(right: 3.0),
+                child: Icon(Icons.alt_route, size: 12, color: Color(0xFF00D2BE)),
+              ),
+            ...widgets,
+          ],
+        ),
       ),
     );
   }

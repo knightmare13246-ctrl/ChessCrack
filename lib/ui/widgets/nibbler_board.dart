@@ -22,6 +22,9 @@ class NibblerBoard extends StatefulWidget {
   final void Function(ChessMove move) onMove;
   final int animationDurationMs;
   final ValueListenable<PositionAnalysis?>? analysisListenable;
+  final bool showPvContinuation;
+  final int? selectedPvIndex;
+  final PvContinuationPlan? continuationPlan;
 
   const NibblerBoard({
     super.key,
@@ -39,6 +42,9 @@ class NibblerBoard extends StatefulWidget {
     required this.onMove,
     this.animationDurationMs = 200,
     this.analysisListenable,
+    this.showPvContinuation = true,
+    this.selectedPvIndex,
+    this.continuationPlan,
   });
 
   @override
@@ -262,6 +268,9 @@ class _NibblerBoardState extends State<NibblerBoard>
                                     isFlipped: widget.isFlipped,
                                     arrowheadType: widget.arrowheadType,
                                     engineType: widget.engineType,
+                                    continuationPlan: widget.continuationPlan,
+                                    showPvContinuation: widget.showPvContinuation,
+                                    selectedPvIndex: widget.selectedPvIndex,
                                   ),
                                 );
                               },
@@ -277,6 +286,9 @@ class _NibblerBoardState extends State<NibblerBoard>
                                 isFlipped: widget.isFlipped,
                                 arrowheadType: widget.arrowheadType,
                                 engineType: widget.engineType,
+                                continuationPlan: widget.continuationPlan,
+                                showPvContinuation: widget.showPvContinuation,
+                                selectedPvIndex: widget.selectedPvIndex,
                               ),
                             ),
                     ),

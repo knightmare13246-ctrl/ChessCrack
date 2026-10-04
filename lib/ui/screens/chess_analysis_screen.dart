@@ -79,6 +79,10 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
   final MaiaRatingEngine _maiaRatingEngine = MaiaRatingEngine();
   Timer? _maiaSweepDebounceTimer;
 
+  // PV Continuation Multi-step Plan state
+  int? _selectedPvIndex;
+  bool _showPvContinuation = true;
+
   late TabController _tabController;
 
   @override
@@ -581,10 +585,34 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
     _engineService.startAnalysis(_gameTree.currentNode.position);
   }
 
+  void _togglePlan() {
+    setState(() {
+      if (!_showPvContinuation) {
+        _showPvContinuation = true;
+        _selectedPvIndex ??= 1;
+      } else {
+        _showPvContinuation = false;
+      }
+    });
+  }
+
+  void _onSelectPvLine(int multipv) {
+    setState(() {
+      if (_selectedPvIndex == multipv && _showPvContinuation) {
+        // Tapping the already selected PV line toggles the plan off (Best moves only)
+        _showPvContinuation = false;
+      } else {
+        _selectedPvIndex = multipv;
+        _showPvContinuation = true;
+      }
+    });
+  }
+
   void _onMovePlayed(ChessMove move) {
     _stopAutoPlay();
     _stopDraftAutoPlay();
     _draftVariation = null;
+    _selectedPvIndex = null;
 
     setState(() {
       _gameTree.addMove(move);
@@ -602,6 +630,7 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
     _stopAutoPlay();
     _stopDraftAutoPlay();
     _draftVariation = null;
+    _selectedPvIndex = null;
     setState(() {
       _gameTree.jumpToNode(node);
     });
@@ -612,6 +641,7 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
   void _stepBackward() {
     _stopAutoPlay();
     _stopDraftAutoPlay();
+    _selectedPvIndex = null;
     if (_draftVariation != null) {
       if (_draftVariation!.selectedMoveIndex > 0) {
         setState(() {
@@ -637,6 +667,7 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
   void _stepForward({bool fromAutoPlay = false}) {
     if (!fromAutoPlay) _stopAutoPlay();
     _stopDraftAutoPlay();
+    _selectedPvIndex = null;
     if (_draftVariation != null) {
       if (_draftVariation!.selectedMoveIndex < _draftVariation!.totalMoves - 1) {
         setState(() {
@@ -658,6 +689,7 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
     _stopAutoPlay();
     _stopDraftAutoPlay();
     _draftVariation = null;
+    _selectedPvIndex = null;
     setState(() => _gameTree.goToStart());
     _startOrUpdateAnalysis();
   }
@@ -666,6 +698,7 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
     _stopAutoPlay();
     _stopDraftAutoPlay();
     _draftVariation = null;
+    _selectedPvIndex = null;
     setState(() => _gameTree.goToEndOfCurrentLine());
     _startOrUpdateAnalysis();
   }
@@ -1036,6 +1069,7 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
         final multiPvChanged = _engineSettings.multiPv != updated.multiPv;
         setState(() {
           _engineSettings = updated;
+          _showPvContinuation = updated.showPvContinuation;
           if (multiPvChanged) {
             _currentAnalysis = null;
             _gameTree.currentNode.cachedAnalysis = null;
@@ -1141,6 +1175,8 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
                                           ? _currentAnalysisNotifier
                                           : null,
                                       onMove: _onMovePlayed,
+                                      showPvContinuation: _showPvContinuation,
+                                      selectedPvIndex: _selectedPvIndex,
                                     ),
                                   ),
                                 ],
@@ -1168,6 +1204,8 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
                                   onFlipBoard: _flipBoard,
                                   onOpenArrowSettings: _openArrowSettingsDialog,
                                   onOpenEngineSettings: _openEngineSettingsDialog,
+                                  onTogglePlan: _togglePlan,
+                                  isPlanActive: _showPvContinuation,
                                 ),
                               ),
                             ],
@@ -1235,6 +1273,10 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
                                               highlightedUciMove: _highlightedUciMove,
                                               onOpenEngineSettings: _openEngineSettingsDialog,
                                               onOpenArrowSettings: _openArrowSettingsDialog,
+                                              showPvContinuation: _showPvContinuation,
+                                              selectedPvIndex: _selectedPvIndex,
+                                              onSelectPvLine: _onSelectPvLine,
+                                              onTogglePlan: _togglePlan,
                                             );
                                           },
                                         );
@@ -1320,6 +1362,8 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
                               ? _currentAnalysisNotifier
                               : null,
                           onMove: _onMovePlayed,
+                          showPvContinuation: _showPvContinuation,
+                          selectedPvIndex: _selectedPvIndex,
                         ),
                       ),
                     ],
@@ -1340,8 +1384,10 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
                   onStepForward: () => _stepForward(fromAutoPlay: false),
                   onGoToEnd: _goToEnd,
                   onFlipBoard: _flipBoard,
-                                  onOpenArrowSettings: _openArrowSettingsDialog,
-                                  onOpenEngineSettings: _openEngineSettingsDialog,
+                  onOpenArrowSettings: _openArrowSettingsDialog,
+                  onOpenEngineSettings: _openEngineSettingsDialog,
+                  onTogglePlan: _togglePlan,
+                  isPlanActive: _showPvContinuation,
                 ),
                 Container(
                   height: 36,
@@ -1398,6 +1444,12 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
                                 onHighlightMove: _onHighlightMove,
                                 onDownloadMaiaModelRequested: _openEngineManagerDialog,
                                 highlightedUciMove: _highlightedUciMove,
+                                onOpenEngineSettings: _openEngineSettingsDialog,
+                                onOpenArrowSettings: _openArrowSettingsDialog,
+                                showPvContinuation: _showPvContinuation,
+                                selectedPvIndex: _selectedPvIndex,
+                                onSelectPvLine: _onSelectPvLine,
+                                onTogglePlan: _togglePlan,
                               );
                             },
                           );

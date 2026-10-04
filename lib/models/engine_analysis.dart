@@ -9,6 +9,7 @@ export 'candidate_arrow.dart';
 export 'engine_download_model.dart' show EngineInstallationState;
 export 'normalized_evaluation.dart' show NormalizedEvaluation, MateState;
 export '../utils/san_formatter.dart' show PvMoveItem, SANFormatter;
+export 'pv_continuation.dart';
 
 enum EngineType {
   stockfish('Stockfish 19', 'Universal NNUE engine'),

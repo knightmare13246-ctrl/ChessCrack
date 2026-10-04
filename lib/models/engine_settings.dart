@@ -32,6 +32,11 @@ class EngineSettings {
   ArrowFilterOthers arrowFilterOthers;
   Set<String> infoboxStats;
 
+  // PV Continuation & Multi-step Plan settings
+  bool showPvContinuation;
+  int pvContinuationDepth; // e.g. 2, 4, 6, 8 plies (default: 4)
+  PvContinuationFilter pvContinuationFilter;
+
   bool get isMaiaActive => activeEngine == EngineType.lc0 && selectedMaiaId != null;
 
   EngineSettings({
@@ -54,6 +59,9 @@ class EngineSettings {
     this.arrowFilterLc0 = ArrowFilterLc0.all,
     this.arrowFilterOthers = ArrowFilterOthers.all,
     Set<String>? infoboxStats,
+    this.showPvContinuation = true,
+    this.pvContinuationDepth = 4,
+    this.pvContinuationFilter = PvContinuationFilter.all,
   })  : customUciOptions = customUciOptions ?? {},
         infoboxStats = infoboxStats ??
             {
@@ -90,6 +98,9 @@ class EngineSettings {
     ArrowFilterLc0? arrowFilterLc0,
     ArrowFilterOthers? arrowFilterOthers,
     Set<String>? infoboxStats,
+    bool? showPvContinuation,
+    int? pvContinuationDepth,
+    PvContinuationFilter? pvContinuationFilter,
   }) {
     return EngineSettings(
       activeEngine: activeEngine ?? this.activeEngine,
@@ -111,6 +122,9 @@ class EngineSettings {
       arrowFilterLc0: arrowFilterLc0 ?? this.arrowFilterLc0,
       arrowFilterOthers: arrowFilterOthers ?? this.arrowFilterOthers,
       infoboxStats: infoboxStats ?? Set.from(this.infoboxStats),
+      showPvContinuation: showPvContinuation ?? this.showPvContinuation,
+      pvContinuationDepth: pvContinuationDepth ?? this.pvContinuationDepth,
+      pvContinuationFilter: pvContinuationFilter ?? this.pvContinuationFilter,
     );
   }
 
@@ -130,6 +144,9 @@ class EngineSettings {
         'arrowFilterLc0': arrowFilterLc0.name,
         'arrowFilterOthers': arrowFilterOthers.name,
         'infoboxStats': infoboxStats.toList(),
+        'showPvContinuation': showPvContinuation,
+        'pvContinuationDepth': pvContinuationDepth,
+        'pvContinuationFilter': pvContinuationFilter.name,
       };
 
   factory EngineSettings.fromJson(Map<String, dynamic> json) {
@@ -170,6 +187,14 @@ class EngineSettings {
       infoStats = Set<String>.from(json['infoboxStats'] as List);
     }
 
+    PvContinuationFilter contFilter = PvContinuationFilter.all;
+    if (json['pvContinuationFilter'] != null) {
+      contFilter = PvContinuationFilter.values.firstWhere(
+        (e) => e.name == json['pvContinuationFilter'],
+        orElse: () => PvContinuationFilter.all,
+      );
+    }
+
     return EngineSettings(
       activeEngine: engine,
       threads: json['threads'] as int? ?? 1,
@@ -188,6 +213,9 @@ class EngineSettings {
       arrowFilterLc0: filterLc0,
       arrowFilterOthers: filterOthers,
       infoboxStats: infoStats,
+      showPvContinuation: json['showPvContinuation'] as bool? ?? true,
+      pvContinuationDepth: json['pvContinuationDepth'] as int? ?? 4,
+      pvContinuationFilter: contFilter,
     );
   }
 }

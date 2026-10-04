@@ -1,7 +1,10 @@
-import 'dart:ui';
+import 'package:flutter/material.dart';
+
 import 'chess_move.dart';
 import 'engine_analysis.dart';
 import 'engine_settings.dart';
+
+export 'pv_continuation.dart';
 
 /// Available presentation modes for arrowhead badges on the chessboard.
 enum ArrowheadType {
@@ -127,6 +130,7 @@ class CandidateArrow {
   final String? sourceFen;
 
   final ArrowVisualStyle style;
+  final PvContinuationPlan? continuationPlan;
 
   const CandidateArrow({
     required this.rank,
@@ -152,6 +156,7 @@ class CandidateArrow {
     this.engineSessionId = 0,
     this.sourceFen,
     required this.style,
+    this.continuationPlan,
   });
 
   /// Formats the text to display in the circular arrowhead badge.
@@ -233,6 +238,7 @@ class CandidateArrow {
     int? engineSessionId,
     String? sourceFen,
     ArrowVisualStyle? style,
+    PvContinuationPlan? continuationPlan,
   }) {
     return CandidateArrow(
       rank: rank ?? this.rank,
@@ -258,6 +264,7 @@ class CandidateArrow {
       engineSessionId: engineSessionId ?? this.engineSessionId,
       sourceFen: sourceFen ?? this.sourceFen,
       style: style ?? this.style,
+      continuationPlan: continuationPlan ?? this.continuationPlan,
     );
   }
 }

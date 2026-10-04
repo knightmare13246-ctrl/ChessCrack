@@ -37,6 +37,9 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
   late ArrowFilterOthers _selectedFilterOthers;
   late Set<String> _infoboxStats;
   late int _multiPv;
+  late bool _showPvContinuation;
+  late int _pvContinuationDepth;
+  late PvContinuationFilter _pvContinuationFilter;
 
   @override
   void initState() {
@@ -46,6 +49,9 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
     _selectedFilterOthers = widget.settings.arrowFilterOthers;
     _infoboxStats = Set.from(widget.settings.infoboxStats);
     _multiPv = widget.settings.multiPv;
+    _showPvContinuation = widget.settings.showPvContinuation;
+    _pvContinuationDepth = widget.settings.pvContinuationDepth;
+    _pvContinuationFilter = widget.settings.pvContinuationFilter;
   }
 
   void _notifyChange() {
@@ -55,6 +61,9 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
       arrowFilterOthers: _selectedFilterOthers,
       infoboxStats: _infoboxStats,
       multiPv: _multiPv,
+      showPvContinuation: _showPvContinuation,
+      pvContinuationDepth: _pvContinuationDepth,
+      pvContinuationFilter: _pvContinuationFilter,
     );
     widget.onSettingsChanged(updated);
   }
@@ -187,6 +196,125 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
                             _notifyChange();
                           },
                         ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Section 1.5: PV Continuation & Maneuver Plan
+                  _buildSectionHeader('PV CONTINUATION & MANEUVER PLAN (ENGINE IDEA)'),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF222222),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SwitchListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text(
+                            'Show Multi-Step Plan / Idea Arrows',
+                            style: TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: const Text(
+                            'Visualizes future engine PV moves as an idea / maneuver chain with step numbers',
+                            style: TextStyle(color: Colors.white60, fontSize: 11),
+                          ),
+                          value: _showPvContinuation,
+                          activeColor: const Color(0xFF00D2BE),
+                          onChanged: (val) {
+                            setState(() => _showPvContinuation = val);
+                            _notifyChange();
+                          },
+                        ),
+                        if (_showPvContinuation) ...[
+                          const Divider(color: Colors.white12),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Continuation Depth (Plies):', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                              Text('$_pvContinuationDepth plies', style: const TextStyle(color: Color(0xFF00D2BE), fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [2, 4, 6, 8].map((depth) {
+                              final isSel = _pvContinuationDepth == depth;
+                              return GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () {
+                                  setState(() => _pvContinuationDepth = depth);
+                                  _notifyChange();
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                                  decoration: BoxDecoration(
+                                    color: isSel ? const Color(0xFF00D2BE) : const Color(0xFF262626),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: isSel ? const Color(0xFF00D2BE) : const Color(0xFF444444),
+                                      width: 1.2,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    '$depth plies',
+                                    style: TextStyle(
+                                      color: isSel ? Colors.black : Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 10),
+                          const Divider(color: Colors.white12),
+                          const SizedBox(height: 4),
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text('Plan Display Scope:', style: TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                          ),
+                          const SizedBox(height: 6),
+                          ...PvContinuationFilter.values.map((f) {
+                            final isSel = _pvContinuationFilter == f;
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2.5),
+                              child: Material(
+                                color: isSel ? const Color(0xFF003830) : const Color(0xFF262626),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                  side: BorderSide(
+                                    color: isSel ? const Color(0xFF00D2BE) : Colors.white10,
+                                  ),
+                                ),
+                                child: RadioListTile<PvContinuationFilter>(
+                                  dense: true,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                                  value: f,
+                                  groupValue: _pvContinuationFilter,
+                                  activeColor: const Color(0xFF00D2BE),
+                                  title: Text(f.label, style: TextStyle(color: isSel ? const Color(0xFF00D2BE) : Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                                  subtitle: Text(f.description, style: const TextStyle(color: Colors.white60, fontSize: 11)),
+                                  onChanged: (val) {
+                                    if (val != null) {
+                                      setState(() => _pvContinuationFilter = val);
+                                      _notifyChange();
+                                    }
+                                  },
+                                ),
+                              ),
+                            );
+                          }),
+                        ],
                       ],
                     ),
                   ),

@@ -15,6 +15,7 @@ import '../utils/win_rate_calculator.dart';
 import 'engine_coordinator.dart';
 import 'engine_trace_logger.dart';
 import 'native_engine_runner.dart';
+import 'pv_continuation_simulator.dart';
 
 class UciEngineService {
   Process? _engineProcess;
@@ -513,6 +514,17 @@ class UciEngineService {
           );
         }
       }
+      if (topArrow != null && topArrow.continuationPlan == null && topArrow.pvUci.length > 1) {
+        final plan = PvContinuationSimulator.simulate(
+          initialPosition: _currentPosition,
+          pvUciMoves: topArrow.pvUci,
+          multipv: topArrow.rank,
+          maxPlies: _settings.pvContinuationDepth,
+          baseColor: topArrow.style.shaftColor,
+          filter: _settings.pvContinuationFilter,
+        );
+        topArrow = topArrow.copyWith(continuationPlan: plan);
+      }
       _hintCompleter!.complete(topArrow);
       _hintCompleter = null;
     }
@@ -963,6 +975,17 @@ class UciEngineService {
       expectedScore: expScore,
     );
 
+    final continuationPlan = (movesUci.length > 1)
+        ? PvContinuationSimulator.simulate(
+            initialPosition: _currentPosition,
+            pvUciMoves: movesUci,
+            multipv: multipv,
+            maxPlies: _settings.pvContinuationDepth,
+            baseColor: arrowStyle.shaftColor,
+            filter: _settings.pvContinuationFilter,
+          )
+        : null;
+
     final candidateArrow = CandidateArrow(
       rank: multipv,
       uciMove: firstMoveUci,
@@ -987,6 +1010,7 @@ class UciEngineService {
       engineSessionId: capturedSessId,
       sourceFen: _currentFen,
       style: arrowStyle,
+      continuationPlan: continuationPlan,
     );
 
     _candidateArrowsMap[multipv] = candidateArrow;
