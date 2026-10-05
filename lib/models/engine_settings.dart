@@ -43,7 +43,7 @@ class EngineSettings {
     this.activeEngine = EngineType.stockfish,
     this.threads = 1,
     this.hashSizeMb = 16,
-    this.multiPv = 3,
+    this.multiPv = 4,
     this.lc0Backend = 'auto',
     this.weightsPath,
     this.syzygyPath,

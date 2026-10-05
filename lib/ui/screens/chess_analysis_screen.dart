@@ -36,6 +36,7 @@ import '../widgets/theme_settings_dialog.dart';
 import '../../models/chess_game_record.dart';
 import '../../services/engine_coordinator.dart';
 import 'chess_play_screen.dart';
+import 'database_library_screen.dart';
 import 'my_games_screen.dart';
 import 'play_setup_dialog.dart';
 
@@ -102,6 +103,17 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
     });
 
     _gameTree = GameTree.initial();
+    _movesByRatingDataset = MovesByRatingDataset(
+      fen: _gameTree.currentNode.position.toFen(),
+      positionRevision: _gameTree.currentNode.position.hashCode,
+      supportedRatings: MaiaRatingEngine.supportedRatings,
+      curves: const [],
+      activeRating: _activeRating,
+      isComputing: true,
+      isModelInstalled: true,
+    );
+    _movesByRatingNotifier.value = _movesByRatingDataset;
+
     _themeService = ThemeService();
     _soundService = SoundService();
     _engineSettings = EngineSettings(
@@ -148,9 +160,15 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
     await _downloadService.initialize();
     await _restoreSessionState();
     await _initEngineWithNativeCheck();
-    if (!_isLiveAnalysisActive) {
-      _triggerMaiaRatingSweep();
+
+    // Pre-warm persistent Maia ONNX session in background isolate
+    final modelInfo = _downloadService.maiaRatingModelInfo;
+    final modelPath = _downloadService.maia3Paths?.finalModelPath ?? modelInfo.localExecutablePath;
+    if (File(modelPath).existsSync() && !modelPath.contains('.download')) {
+      _maiaRatingEngine.ensureModelLoaded(modelPath);
     }
+
+    _triggerMaiaRatingSweep();
   }
 
   Future<void> _initEngineWithNativeCheck() async {
@@ -320,16 +338,9 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
 
     final modelInfo = _downloadService.maiaRatingModelInfo;
     final modelPath = _downloadService.maia3Paths?.finalModelPath ?? modelInfo.localExecutablePath;
-    final bool isInstalled = modelInfo.isInstalled &&
-        !modelPath.contains('.download') &&
-        File(modelPath).existsSync() &&
-        File(modelPath).lengthSync() >= 1000000;
-    if (kDebugMode) {
-      developer.log(
-        'FEN: $currentFen, isInstalled: $isInstalled, path: $modelPath',
-        name: 'ChessAnalysisScreen',
-      );
-    }
+    final bool isInstalled = (modelInfo.isInstalled || (File(modelPath).existsSync() && File(modelPath).lengthSync() >= 1000000)) &&
+        !modelPath.contains('.download');
+    debugPrint('[ChessAnalysis] _triggerMaiaRatingSweep: FEN: $currentFen, isInstalled: $isInstalled, path: $modelPath');
 
     if (!isInstalled) {
       if (mounted) {
@@ -363,7 +374,7 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
       return;
     }
 
-    // Set computing state (keeps existing curves visible if same FEN, otherwise shows spinner)
+    // Set computing state (keeps existing curves visible on screen while updating, zero disappearance)
     if (mounted) {
       setState(() {
         _movesByRatingDataset = MovesByRatingDataset(
@@ -379,7 +390,8 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
       });
     }
 
-    _maiaSweepDebounceTimer = Timer(const Duration(milliseconds: 150), () async {
+    // Launch Maia graph inference immediately without waiting for Stockfish or artificial debounce
+    scheduleMicrotask(() async {
       if (!mounted || _gameTree.currentNode.position.toFen() != currentFen) return;
 
       // Candidate moves: include explicitly highlighted move or move played in game
@@ -400,19 +412,11 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
         activeRating: _activeRating,
         modelPath: modelPath,
         priorityUciMoves: priorityMoves,
-        onPartialUpdate: (partialSnapshot) {
-          if (!mounted || _gameTree.currentNode.position.toFen() != currentFen) return;
-          _maiaSnapshotCache[currentFen] = partialSnapshot;
-          setState(() {
-            _movesByRatingDataset = partialSnapshot.toDataset(activeRating: _activeRating);
-            _movesByRatingNotifier.value = _movesByRatingDataset;
-          });
-        },
       );
 
       if (!mounted || _gameTree.currentNode.position.toFen() != currentFen) return;
 
-      if (snapshot != null) {
+      if (snapshot != null && snapshot.ratings.length >= 2) {
         _maiaSnapshotCache[currentFen] = snapshot;
         setState(() {
           _movesByRatingDataset = snapshot.toDataset(activeRating: _activeRating);
@@ -965,6 +969,44 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
     );
   }
 
+  void _openDatabaseLibrary() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (ctx) => DatabaseLibraryScreen(
+          onOpenGameInAnalysis: (pgn, title) {
+            try {
+              final parsedTree = PgnParser.parse(pgn);
+              if (mounted) {
+                setState(() {
+                  _gameTree = parsedTree;
+                  _draftVariation = null;
+                  _selectedPvIndex = null;
+                });
+                _tabController.animateTo(0);
+                _startOrUpdateAnalysis();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Loaded $title into Analysis'),
+                    backgroundColor: const Color(0xFF00D2BE),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            } catch (e) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error parsing PGN: $e'),
+                  backgroundColor: Colors.redAccent,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          },
+        ),
+      ),
+    );
+  }
+
   Future<void> _loadGameForReview(ChessGameRecord record) async {
     try {
       var pgn = record.pgn;
@@ -1111,6 +1153,7 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
 
     return Scaffold(
       backgroundColor: Colors.black,
+      resizeToAvoidBottomInset: false,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -1322,7 +1365,7 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
             const fenHeight = 28.0;
             const controlsHeight = 38.0;
             const tabBarHeight = 36.0;
-            const minTabsHeight = 150.0;
+            const minTabsHeight = 230.0;
             const verticalFixed = headerHeight + fenHeight + controlsHeight + tabBarHeight + minTabsHeight + 16.0;
 
             final maxBoardWidth = availableWidth - (horizontalPadding * 2) - evalBarWidth - spacing;
@@ -1677,9 +1720,9 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
           ),
           const SizedBox(width: 4),
           IconButton(
-            icon: const Icon(Icons.folder_open, color: Color(0xFF00D2BE), size: 19),
-            onPressed: _openMyGames,
-            tooltip: 'My Games',
+            icon: const Icon(Icons.storage_rounded, color: Color(0xFF00D2BE), size: 19),
+            onPressed: _openDatabaseLibrary,
+            tooltip: 'Chess Databases & Games',
             visualDensity: VisualDensity.compact,
           ),
           const SizedBox(width: 4),
@@ -1727,6 +1770,12 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
             color: const Color(0xFF222222),
             onSelected: (value) {
               switch (value) {
+                case 'databases':
+                  _openDatabaseLibrary();
+                  break;
+                case 'my_games':
+                  _openMyGames();
+                  break;
                 case 'flip':
                   _flipBoard();
                   break;
@@ -1754,6 +1803,27 @@ class _ChessAnalysisScreenState extends State<ChessAnalysisScreen>
               }
             },
             itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'databases',
+                child: Row(
+                  children: [
+                    Icon(Icons.storage_rounded, color: Color(0xFF00D2BE), size: 18),
+                    SizedBox(width: 8),
+                    Text('Chess Databases', style: TextStyle(color: Colors.white, fontSize: 13)),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'my_games',
+                child: Row(
+                  children: [
+                    Icon(Icons.folder_open, color: Colors.white70, size: 18),
+                    SizedBox(width: 8),
+                    Text('Legacy Saved Games', style: TextStyle(color: Colors.white, fontSize: 13)),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(height: 8),
               if (isNarrow) ...[
                 const PopupMenuItem(
                   value: 'flip',

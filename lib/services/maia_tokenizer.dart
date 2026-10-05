@@ -168,6 +168,8 @@ class MaiaTokenizer {
 
     if (legalIndices.isEmpty) return {};
 
+    debugPrint('[MaiaDecode] isBlack: $isBlack, moves: ${legalMovesUci.length}, maxLogit: $maxLogit, firstLogits: ${legalIndices.take(3).map((idx) => logits[idx]).toList()}');
+
     double sumExp = 0.0;
     final expValues = List<double>.filled(legalIndices.length, 0.0);
     for (int i = 0; i < legalIndices.length; i++) {

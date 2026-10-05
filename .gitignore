@@ -76,3 +76,11 @@ test_load.py
 test_ort.py
 verify_maia3.py
 
+
+# local QA artifacts
+current_phone_screen_live*.png
+live_screen_*.png
+device_screen.png
+chesscrack_core.dll
+*.apk
+rust/**/target/

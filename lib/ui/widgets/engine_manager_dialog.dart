@@ -107,9 +107,7 @@ class _EngineManagerDialogState extends State<EngineManagerDialog> {
     final isTablet = screenWidth >= 600;
 
     // Responsive dialog sizing:
-    // On phones: dialog fills comfortable width (with 8-12px side padding) and safe height.
-    // On tablets/foldables: centered comfortable modal.
-    final double dialogWidth = isTablet ? 580.0 : (safeWidth - 16.0).clamp(280.0, 560.0);
+    final double maxDialogWidth = isTablet ? 580.0 : safeWidth.clamp(280.0, 580.0);
     final double dialogHeight = isLandscape
         ? (safeHeight - 16.0).clamp(280.0, safeHeight)
         : (safeHeight - 24.0).clamp(420.0, safeHeight);
@@ -118,13 +116,13 @@ class _EngineManagerDialogState extends State<EngineManagerDialog> {
       backgroundColor: const Color(0xFF181818),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       insetPadding: EdgeInsets.symmetric(
-        horizontal: isTablet ? ((screenWidth - dialogWidth) / 2).clamp(16.0, 200.0) : 8.0,
+        horizontal: isTablet ? ((screenWidth - maxDialogWidth) / 2).clamp(16.0, 200.0) : 8.0,
         vertical: isLandscape ? 8.0 : 12.0,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: SizedBox(
-          width: dialogWidth,
+          width: isTablet ? maxDialogWidth : double.infinity,
           height: dialogHeight,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -259,13 +257,17 @@ class _EngineManagerDialogState extends State<EngineManagerDialog> {
       children: [
         Icon(icon, color: const Color(0xFF00D2BE), size: 15),
         const SizedBox(width: 6),
-        Text(
-          title,
-          style: const TextStyle(
-            color: Color(0xFF00D2BE),
-            fontSize: 11.5,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0.8,
+        Flexible(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Color(0xFF00D2BE),
+              fontSize: 11.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.8,
+            ),
           ),
         ),
       ],
@@ -439,9 +441,12 @@ class _EngineManagerDialogState extends State<EngineManagerDialog> {
 
           const SizedBox(height: 10),
 
-          // Tier 3: Action Controls Row (Spacious & Separated from text)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // Tier 3: Action Controls Row (Responsive Wrap)
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
             children: [
               // Main Action Button
               if (isDownloading)
@@ -676,8 +681,11 @@ class _EngineManagerDialogState extends State<EngineManagerDialog> {
           const SizedBox(height: 8),
 
           // Tier 3: Action Controls Row (Cleanly separated from metadata badges)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 6,
             children: [
               if (isDownloading)
                 OutlinedButton.icon(
@@ -919,8 +927,11 @@ class _EngineManagerDialogState extends State<EngineManagerDialog> {
 
           const SizedBox(height: 8),
 
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 6,
             children: [
               if (isDownloading)
                 OutlinedButton.icon(

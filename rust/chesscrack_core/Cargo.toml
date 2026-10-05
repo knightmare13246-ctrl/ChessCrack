@@ -1,0 +1,28 @@
+[package]
+name = "chesscrack_core"
+version = "0.1.0"
+edition = "2021"
+description = "ChessCrack performance core: streaming PGN, position hashing, SQLite-backed game database."
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "chesscrack_core"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+shakmaty = "0.27"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[[bin]]
+name = "ccbench"
+path = "src/bin/ccbench.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+# unwind (not abort): the FFI layer uses catch_unwind so a bug can never kill the app.
+panic = "unwind"
+strip = true

@@ -10,6 +10,7 @@ import '../models/engine_analysis.dart';
 import '../models/engine_settings.dart';
 import '../services/chess_sound_service.dart';
 import '../services/engine_coordinator.dart';
+import '../services/chesscrack_core.dart';
 import '../services/native_engine_runner.dart';
 import '../services/pgn_storage_service.dart';
 import '../services/uci_engine_service.dart';
@@ -22,6 +23,27 @@ enum PlayGameState {
   gameEnded,
 }
 
+/// Immutable atomic snapshot representing engine analysis for a specific board position.
+class PlayAnalysisSnapshot {
+  final int engineSessionId;
+  final int analysisRequestId;
+  final int positionRevision;
+  final String fen;
+  final List<CandidateArrow> candidateArrows;
+  final List<PvLine> pvLines;
+  final DateTime timestamp;
+
+  const PlayAnalysisSnapshot({
+    required this.engineSessionId,
+    required this.analysisRequestId,
+    required this.positionRevision,
+    required this.fen,
+    required this.candidateArrows,
+    required this.pvLines,
+    required this.timestamp,
+  });
+}
+
 class ChessPlayController extends ChangeNotifier {
   final UciEngineService engineService;
   final MaiaThinkingController _maiaThinkingController = MaiaThinkingController();
@@ -29,6 +51,9 @@ class ChessPlayController extends ChangeNotifier {
   EngineLease? _playLease;
   int _gameSessionId = 0;
   int _moveRequestId = 0;
+  int _positionRevision = 0;
+  int get positionRevision => _positionRevision;
+
   bool _isFinalizingGame = false;
   CancellationToken? _maiaCancelToken;
   Timer? _hintTimer;
@@ -67,8 +92,15 @@ class ChessPlayController extends ChangeNotifier {
   MaiaThinkingProfile _maiaProfile = MaiaThinkingProfile.humanLike;
   MaiaThinkingProfile get maiaProfile => _maiaProfile;
 
-  CandidateArrow? _hintArrow;
-  CandidateArrow? get hintArrow => _hintArrow;
+  PlayAnalysisSnapshot? _currentSnapshot;
+  PlayAnalysisSnapshot? get currentSnapshot => _currentSnapshot;
+
+  bool _showHint = false;
+  bool get showHint => _showHint;
+
+  List<CandidateArrow> _hintArrows = const [];
+  List<CandidateArrow> get hintArrows => _hintArrows;
+  CandidateArrow? get hintArrow => _hintArrows.isNotEmpty ? _hintArrows.first : null;
 
   bool _isHintLoading = false;
   bool get isHintLoading => _isHintLoading;
@@ -88,7 +120,34 @@ class ChessPlayController extends ChangeNotifier {
   String? _errorMessage;
   String? get errorMessage => _errorMessage;
 
-  ChessPlayController({required this.engineService});
+  ChessPlayController({required this.engineService}) {
+    engineService.analysisNotifier.addListener(_onAnalysisUpdated);
+  }
+
+  void _onAnalysisUpdated() {
+    final analysis = engineService.analysisNotifier.value;
+    if (_gameState == PlayGameState.playerTurn &&
+        analysis != null &&
+        analysis.fen == _position.toFen() &&
+        analysis.candidateArrows.isNotEmpty) {
+      _currentSnapshot = PlayAnalysisSnapshot(
+        engineSessionId: analysis.engineSessionId,
+        analysisRequestId: analysis.analysisRequestId,
+        positionRevision: _positionRevision,
+        fen: analysis.fen,
+        candidateArrows: List.unmodifiable(analysis.candidateArrows),
+        pvLines: List.unmodifiable(analysis.pvLines),
+        timestamp: DateTime.now(),
+      );
+      _hintArrows = _currentSnapshot!.candidateArrows;
+      if (_isHintLoading) {
+        _isHintLoading = false;
+        notifyListeners();
+      } else if (_showHint) {
+        notifyListeners();
+      }
+    }
+  }
 
   bool get isPlayerTurn =>
       _gameState == PlayGameState.playerTurn &&
@@ -116,11 +175,14 @@ class ChessPlayController extends ChangeNotifier {
 
     _gameSessionId++;
     _moveRequestId = 0;
+    _positionRevision++;
     _isFinalizingGame = false;
     _isGameSaved = false;
     _savedRecord = null;
     _errorMessage = null;
-    _hintArrow = null;
+    _currentSnapshot = null;
+    _hintArrows = const [];
+    _showHint = false;
     _isHintLoading = false;
 
     _opponentEngine = opponentEngine;
@@ -151,7 +213,7 @@ class ChessPlayController extends ChangeNotifier {
     // Acquire exclusive engine lease for Play mode
     _playLease = await EngineCoordinator().acquireLease(EngineLeaseType.play);
 
-    // Apply engine settings for this game
+    // Apply engine settings for this game with MultiPV 4 for Nibbler candidate arrows
     final newSettings = engineService.settings.copyWith(
       activeEngine: opponentEngine,
       limitStrength: limitStrength,
@@ -159,7 +221,7 @@ class ChessPlayController extends ChangeNotifier {
       selectedMaiaId: selectedMaiaId,
       weightsPath: maiaWeightsPath ?? engineService.settings.weightsPath,
       nodeLimit: opponentEngine == EngineType.lc0 && selectedMaiaId != null ? 1 : engineService.settings.nodeLimit,
-      multiPv: 1, // Single-PV during play to conserve battery/CPU
+      multiPv: 4,
     );
     await engineService.updateSettings(newSettings);
 
@@ -182,6 +244,7 @@ class ChessPlayController extends ChangeNotifier {
     if (_playerColor == PieceColor.white) {
       _gameState = PlayGameState.playerTurn;
       _clock?.start(ClockSide.white);
+      _startPlayerTurnAnalysis();
       notifyListeners();
     } else {
       _gameState = PlayGameState.engineThinking;
@@ -189,6 +252,13 @@ class ChessPlayController extends ChangeNotifier {
       notifyListeners();
       _dispatchEngineMove();
     }
+  }
+
+  void _startPlayerTurnAnalysis() {
+    if (_gameState != PlayGameState.playerTurn || _isFinalizingGame) return;
+    _currentSnapshot = null;
+    _hintArrows = const [];
+    engineService.startAnalysis(_position);
   }
 
   /// Handles human player move.
@@ -205,9 +275,15 @@ class ChessPlayController extends ChangeNotifier {
       return false;
     }
 
-    // Dismiss ephemeral hint arrow
+    // Dismiss ephemeral hint state on move and stop analysis
     _hintTimer?.cancel();
-    _hintArrow = null;
+    _showHint = false;
+    _isHintLoading = false;
+    _currentSnapshot = null;
+    _hintArrows = const [];
+    _positionRevision++;
+
+    engineService.stopAnalysis();
 
     final nextPos = _position.applyMove(legalMove);
     _moveHistory.add(legalMove);
@@ -239,35 +315,37 @@ class ChessPlayController extends ChangeNotifier {
     return true;
   }
 
-  /// Ephemeral adaptive hint request.
-  Future<void> requestHint() async {
-    if (_gameState != PlayGameState.playerTurn || _isHintLoading || _isFinalizingGame) {
+  /// Deterministic MultiPV hint request.
+  /// Reads the current analysis snapshot without restarting search or altering engine state.
+  void requestHint() {
+    if (_gameState != PlayGameState.playerTurn || _isFinalizingGame) {
       return;
     }
 
+    if (_showHint) {
+      // Toggle off if already showing
+      _showHint = false;
+      notifyListeners();
+      return;
+    }
+
+    _showHint = true;
+
+    // If a snapshot is already available for this exact position, display it immediately
+    if (_currentSnapshot != null && _currentSnapshot!.fen == _position.toFen()) {
+      _isHintLoading = false;
+      _hintArrows = _currentSnapshot!.candidateArrows;
+      notifyListeners();
+      return;
+    }
+
+    // If analysis is still calculating, show waiting indicator without restarting search
     _isHintLoading = true;
     notifyListeners();
 
-    try {
-      final arrow = await engineService.requestAdaptiveHint(
-        position: _position,
-        searchTime: const Duration(milliseconds: 1400),
-      );
-      if (_gameState == PlayGameState.playerTurn && arrow != null) {
-        _hintArrow = arrow;
-        _hintTimer?.cancel();
-        _hintTimer = Timer(const Duration(seconds: 4), () {
-          _hintArrow = null;
-          notifyListeners();
-        });
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        developer.log('Hint error: $e', name: 'ChessPlayController');
-      }
-    } finally {
-      _isHintLoading = false;
-      notifyListeners();
+    // Ensure engine is actively analyzing current position
+    if (!engineService.isAnalyzing) {
+      engineService.startAnalysis(_position);
     }
   }
 
@@ -317,7 +395,7 @@ class ChessPlayController extends ChangeNotifier {
   }
 
   /// Dispatches the engine's move computation with crash resilience.
-  Future<void> _dispatchEngineMove() async {
+  Future<void> _dispatchEngineMove({int retry = 0}) async {
     final currentSession = _gameSessionId;
     final currentReq = ++_moveRequestId;
 
@@ -387,9 +465,16 @@ class ChessPlayController extends ChangeNotifier {
       final legalMove = _position.findLegalMoveByUci(uciMove);
       if (legalMove == null) {
         if (kDebugMode) {
-          developer.log('Engine returned illegal move: $uciMove', name: 'ChessPlayController');
+          developer.log('Engine returned illegal move: $uciMove (retry=$retry)', name: 'ChessPlayController');
         }
-        _checkAndHandleGameOver();
+        if (_checkAndHandleGameOver()) return;
+        if (retry < 1) {
+          // Likely a stale bestmove from an aborted search — request again for this position.
+          unawaited(_dispatchEngineMove(retry: retry + 1));
+        } else {
+          _errorMessage = 'Engine returned an illegal move ($uciMove)';
+          notifyListeners();
+        }
         return;
       }
 
@@ -413,7 +498,11 @@ class ChessPlayController extends ChangeNotifier {
         return;
       }
 
+      _positionRevision++;
+      _currentSnapshot = null;
+      _hintArrows = const [];
       _gameState = PlayGameState.playerTurn;
+      _startPlayerTurnAnalysis();
       notifyListeners();
     } catch (e, st) {
       if (currentSession != _gameSessionId) return;
@@ -435,8 +524,12 @@ class ChessPlayController extends ChangeNotifier {
 
     _clock?.stop();
     _hintTimer?.cancel();
-    _hintArrow = null;
+    _showHint = false;
+    _isHintLoading = false;
+    _currentSnapshot = null;
+    _hintArrows = const [];
     _maiaCancelToken?.cancel();
+    engineService.stopAnalysis();
 
     _gameState = PlayGameState.gameEnded;
     _terminationReason = termination;
@@ -490,6 +583,22 @@ ${movesPgnBuffer.toString().trim()}
     final savedOk = await PgnStorageService.instance.saveGame(record);
     _savedRecord = record;
     _isGameSaved = savedOk;
+
+    // Also persist into ChessCrack Core default "My Games" database
+    try {
+      if (ChessCrackCore.instance.isInitialized) {
+        final dbs = await ChessCrackCore.instance.listDatabases();
+        final myGamesDb = dbs.firstWhere(
+          (d) => d['category'] == 'my_games' || d['name'] == 'My Games',
+          orElse: () => dbs.isNotEmpty ? dbs.first : {'id': 1},
+        );
+        final dbId = (myGamesDb['id'] as num).toInt();
+        await ChessCrackCore.instance.savePgn(dbId: dbId, pgn: fullPgn);
+      }
+    } catch (e) {
+      developer.log('Auto-saving play game to ChessCrack database failed: $e', name: 'ChessPlayController');
+    }
+
     notifyListeners();
   }
 

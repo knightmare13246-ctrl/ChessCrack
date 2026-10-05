@@ -67,7 +67,7 @@ class PersistedAppState {
     this.hapticsEnabled = true,
     this.activeEngine = EngineType.stockfish,
     this.isLiveAnalysisActive = true,
-    this.multiPv = 3,
+    this.multiPv = 4,
     this.arrowheadType = ArrowheadType.winrate,
     this.arrowFilterLc0 = ArrowFilterLc0.all,
     this.arrowFilterOthers = ArrowFilterOthers.all,
@@ -299,7 +299,7 @@ class SessionPersistenceService {
       );
 
       final isEngineActive = prefs.getBool(_kEngineActive) ?? prefs.getBool('session_engine_active') ?? true;
-      final multiPv = prefs.getInt(_kMultiPv) ?? prefs.getInt('session_multipv') ?? 3;
+      final multiPv = prefs.getInt(_kMultiPv) ?? prefs.getInt('session_multipv') ?? 4;
 
       final arrowStr = prefs.getString(_kArrowhead) ?? prefs.getString('session_arrowhead');
       final arrowhead = ArrowheadType.values.firstWhere(

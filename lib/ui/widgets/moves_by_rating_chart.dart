@@ -587,7 +587,7 @@ class _RatingChartPainter extends CustomPainter {
     final endLabels = <_CurveEndLabel>[];
 
     for (final curve in dataset.curves) {
-      if (curve.points.isEmpty || hiddenMoves.contains(curve.uciMove)) continue;
+      if (curve.points.length < 2 || hiddenMoves.contains(curve.uciMove)) continue;
 
       final isHighlight = highlightedUciMove == curve.uciMove;
       final sortedPoints = List<MoveRatingPoint>.from(curve.points)
@@ -600,7 +600,7 @@ class _RatingChartPainter extends CustomPainter {
         pixelPoints.add(Offset(x, y));
       }
 
-      if (pixelPoints.isEmpty) continue;
+      if (pixelPoints.length < 2) continue;
 
       // A. Build Cubic Path using Fritsch-Carlson Monotone Cubic Spline
       final linePath = MonotoneCubicSpline.computePath(pixelPoints);

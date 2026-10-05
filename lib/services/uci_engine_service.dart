@@ -492,28 +492,9 @@ class UciEngineService {
       _gameMoveCompleter = null;
     }
     if (_hintCompleter != null && !_hintCompleter!.isCompleted) {
+      // Only genuine engine-reported PV candidates — never fabricate an arrow
+      // (no invented winrate/depth) from a bare bestmove.
       var topArrow = _candidateArrowsMap[1] ?? (_candidateArrowsMap.isNotEmpty ? _candidateArrowsMap.values.first : null);
-      if (topArrow == null && _lastBestmove != null && _lastBestmove != '(none)') {
-        final candMove = _currentPosition.findLegalMoveByUci(_lastBestmove!);
-        if (candMove != null) {
-          topArrow = CandidateArrow(
-            rank: 1,
-            uciMove: _lastBestmove!,
-            from: candMove.from,
-            to: candMove.to,
-            pvUci: [_lastBestmove!],
-            pvSan: [candMove.san ?? _lastBestmove!],
-            winProbability: 55.0,
-            expectedScore: 55.0,
-            depth: _currentDepth ?? 12,
-            positionRevision: _positionRevision,
-            requestId: _analysisRequestId,
-            engineSessionId: _engineSessionId,
-            sourceFen: _currentFen,
-            style: _buildArrowStyle(rank: 1, expectedScore: 55.0),
-          );
-        }
-      }
       if (topArrow != null && topArrow.continuationPlan == null && topArrow.pvUci.length > 1) {
         final plan = PvContinuationSimulator.simulate(
           initialPosition: _currentPosition,
@@ -572,6 +553,9 @@ class UciEngineService {
         _candidateArrowsMap.clear();
 
         _setLifecycle(EngineLifecycleState.ready, 'Analyzing with ${_settings.activeEngine.displayName} (Req #$reqId)');
+        if (_settings.activeEngine == EngineType.stockfish) {
+          _sendCommand('setoption name MultiPV value ${_settings.multiPv}');
+        }
         _sendCommand('position fen $fenToSearch');
         final effectiveNodeLimit = _effectiveNodeLimit;
         if (effectiveNodeLimit != null) {
@@ -964,9 +948,14 @@ class UciEngineService {
         : moveEvaluation.expectedScore;
     final double winProb = expScore;
 
+    // Node % is only meaningful for visit-based (MCTS) engines. Alpha-beta engines
+    // such as Stockfish report one cumulative node count for all MultiPV lines,
+    // so deriving a per-move share would be fabricated (e.g. an equal 25% split).
     final candidateVisits = nodes;
     final effectiveTotalNodes = math.max(_currentNodes ?? 0, candidateVisits ?? 0);
-    final double? nodePct = (effectiveTotalNodes > 0 && candidateVisits != null)
+    final double? nodePct = (_settings.activeEngine == EngineType.lc0 &&
+            effectiveTotalNodes > 0 &&
+            candidateVisits != null)
         ? ((candidateVisits / effectiveTotalNodes) * 100.0)
         : visitPct;
 
@@ -1049,10 +1038,10 @@ class UciEngineService {
                       : const Color(0xFFC8E6C9)))); // Mint
     }
 
-    final opacity = rank == 1 ? 0.95 : (rank == 2 ? 0.85 : (rank == 3 ? 0.75 : 0.65));
-    final strokeScale = rank == 1 ? 1.15 : (rank == 2 ? 0.95 : (rank == 3 ? 0.80 : 0.70));
-    final headScale = rank == 1 ? 1.15 : (rank == 2 ? 0.95 : (rank == 3 ? 0.80 : 0.70));
-    final badgeScale = rank == 1 ? 1.05 : (rank == 2 ? 0.95 : (rank == 3 ? 0.90 : 0.85));
+    final opacity = rank == 1 ? 0.95 : (rank == 2 ? 0.88 : (rank == 3 ? 0.82 : 0.75));
+    final strokeScale = rank == 1 ? 1.0 : (rank == 2 ? 1.0 : (rank == 3 ? 1.0 : 1.0));
+    final headScale = rank == 1 ? 1.0 : (rank == 2 ? 1.0 : (rank == 3 ? 1.0 : 1.0));
+    final badgeScale = rank == 1 ? 1.0 : (rank == 2 ? 0.95 : (rank == 3 ? 0.90 : 0.85));
 
     return ArrowVisualStyle(
       shaftColor: baseColor,
@@ -1153,7 +1142,9 @@ class UciEngineService {
         }
       }
 
-      final nodePct = (effectiveTotalNodes > 0 && a.visits != null)
+      final nodePct = (_settings.activeEngine == EngineType.lc0 &&
+              effectiveTotalNodes > 0 &&
+              a.visits != null)
           ? ((a.visits! / effectiveTotalNodes) * 100.0)
           : a.nodePercentage;
 
@@ -1425,6 +1416,9 @@ class UciEngineService {
     _isAnalyzing = true;
 
     _setLifecycle(EngineLifecycleState.ready, 'Analyzing with ${_settings.activeEngine.displayName} (Req #$_analysisRequestId)');
+    if (_settings.activeEngine == EngineType.stockfish) {
+      _sendCommand('setoption name MultiPV value ${_settings.multiPv}');
+    }
     _sendCommand('position fen $_currentFen');
 
     final effectiveNodeLimit = _effectiveNodeLimit;
@@ -1699,6 +1693,31 @@ class UciEngineService {
     }
   }
 
+  /// Fully drains any active or in-flight search before a new explicit request.
+  ///
+  /// 1. If searching, sends `stop`.
+  /// 2. If a stop is pending (from here or an earlier [stopAnalysis]), awaits its bestmove.
+  /// 3. Issues an `isready` barrier: per UCI, the engine flushes all output of the
+  ///    aborted search before replying `readyok`, so no stale `bestmove`/`info`
+  ///    can be attributed to the subsequent request.
+  Future<void> _drainActiveSearch() async {
+    if (_engineProcess == null || _processExited) return;
+    final hadActivity = _searchState == EngineSearchState.searching ||
+        _searchState == EngineSearchState.stopping;
+    if (_searchState == EngineSearchState.searching) {
+      _searchState = EngineSearchState.stopping;
+      _sendCommand('stop');
+      _armStoppingWatchdog();
+    }
+    if (_searchState == EngineSearchState.stopping) {
+      await waitForStopCompletion();
+    }
+    if (hadActivity) {
+      await _waitForReadyOk();
+    }
+    _searchState = EngineSearchState.idle;
+  }
+
   /// Dispatches an explicit move request for Play mode with Single-PV to save CPU/battery.
   Future<String?> requestGameMove({
     required ChessPosition position,
@@ -1713,13 +1732,11 @@ class UciEngineService {
       throw StateError('Engine process is not running');
     }
 
-    // Ensure engine is completely idle before issuing new position/go
-    if (_searchState == EngineSearchState.searching) {
-      _searchState = EngineSearchState.stopping;
-      _sendCommand('stop');
-      _armStoppingWatchdog();
-      await waitForStopCompletion();
-    }
+    // Ensure engine is completely idle before issuing new position/go.
+    // A stop may already be in flight (e.g. stopAnalysis() was just called), so
+    // we must drain it too — otherwise the stale bestmove of the aborted search
+    // would complete this game-move request with a move from the previous position.
+    await _drainActiveSearch();
 
     if (_gameMoveCompleter != null && !_gameMoveCompleter!.isCompleted) {
       _gameMoveCompleter!.complete(null);
@@ -1763,12 +1780,7 @@ class UciEngineService {
     if (_engineProcess == null || _processExited) return null;
 
     // Ensure engine is completely idle before issuing new position/go
-    if (_searchState == EngineSearchState.searching) {
-      _searchState = EngineSearchState.stopping;
-      _sendCommand('stop');
-      _armStoppingWatchdog();
-      await waitForStopCompletion();
-    }
+    await _drainActiveSearch();
 
     if (_hintCompleter != null && !_hintCompleter!.isCompleted) {
       _hintCompleter!.complete(null);

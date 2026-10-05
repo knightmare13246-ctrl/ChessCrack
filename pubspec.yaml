@@ -17,6 +17,7 @@ dependencies:
   collection: ^1.18.0
   archive: ^4.3.0
   onnxruntime: ^1.4.1
+  ffi: ^2.1.2
 
 dev_dependencies:
   flutter_test:

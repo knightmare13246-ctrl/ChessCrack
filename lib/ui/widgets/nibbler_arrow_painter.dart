@@ -1,11 +1,21 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import '../../models/chess_move.dart';
 import '../../models/chess_position.dart';
 import '../../models/engine_analysis.dart';
-import '../../services/pv_continuation_simulator.dart';
+import '../../models/nibbler_arrow_config.dart';
+import '../../utils/board_geometry.dart';
+import '../../utils/nibbler_badge_layout_engine.dart';
 import '../../utils/win_rate_calculator.dart';
 
+/// Dedicated CustomPainter strictly for Nibbler Candidate Arrows (Engine MultiPV).
+///
+/// Features:
+/// - Thin-to-medium curved shafts (quadratic Bézier with deterministic signed curvature)
+/// - Deterministic curve separation preventing arrow overlap across ranks
+/// - Perceptual visibility floor ensuring lower-ranked arrows (PV2, PV3, PV4) remain clear on mobile screens
+/// - Nibbler-style arrowhead notch geometry with high-contrast outlines
+/// - Non-obscuring score badges anchored back along the shaft so the arrowhead tip and notch are 100% visible
+/// - Strict isolation: never mixes with maneuver plans or user interaction arrows
 class NibblerArrowPainter extends CustomPainter {
   final List<CandidateArrow> candidateArrows;
   final List<PvLine> pvLines;
@@ -15,6 +25,9 @@ class NibblerArrowPainter extends CustomPainter {
   final bool isFlipped;
   final ArrowheadType arrowheadType;
   final EngineType engineType;
+  final NibblerCandidateArrowConfig config;
+
+  // Backward compatibility convenience fields
   final PvContinuationPlan? continuationPlan;
   final bool showPvContinuation;
   final int? selectedPvIndex;
@@ -28,6 +41,7 @@ class NibblerArrowPainter extends CustomPainter {
     this.isFlipped = false,
     this.arrowheadType = ArrowheadType.winrate,
     this.engineType = EngineType.lc0,
+    this.config = const NibblerCandidateArrowConfig(),
     this.continuationPlan,
     this.showPvContinuation = false,
     this.selectedPvIndex,
@@ -63,14 +77,6 @@ class NibblerArrowPainter extends CustomPainter {
                   : (rank == 3
                       ? const Color(0xFF81C784)
                       : const Color(0xFFA5D6A7))));
-      final plan = (startPosition != null && line.movesUci.length > 1)
-          ? PvContinuationSimulator.simulate(
-              initialPosition: startPosition,
-              pvUciMoves: line.movesUci,
-              multipv: rank,
-              baseColor: baseColor,
-            )
-          : null;
 
       list.add(CandidateArrow(
         rank: rank,
@@ -94,13 +100,12 @@ class NibblerArrowPainter extends CustomPainter {
           shaftColor: baseColor,
           badgeColor: baseColor,
           textColor: isMaia ? Colors.white : const Color(0xFF111111),
-          borderColor: rank == 1 ? Colors.white : Colors.black45,
-          opacity: rank == 1 ? 0.95 : 0.80,
-          strokeWidthScale: rank == 1 ? 1.15 : 0.90,
-          arrowHeadScale: rank == 1 ? 1.15 : 0.90,
+          borderColor: rank == 1 ? Colors.white : Colors.black87,
+          opacity: rank == 1 ? 0.98 : 0.88,
+          strokeWidthScale: rank == 1 ? 1.15 : 0.92,
+          arrowHeadScale: rank == 1 ? 1.15 : 0.92,
           badgeScale: rank == 1 ? 1.05 : 0.95,
         ),
-        continuationPlan: plan,
       ));
     }
     return list;
@@ -110,12 +115,12 @@ class NibblerArrowPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (candidateArrows.isEmpty) return;
 
-    final squareSize = size.width / 8.0;
+    final geo = BoardGeometry(boardSize: size.width, isFlipped: isFlipped);
+    final squareSize = geo.squareSize;
 
-    // Filter valid arrows
+    // Filter valid moves against current position and revisions
     final validArrows = <CandidateArrow>[];
     for (final arrow in candidateArrows) {
-      // Allow hint arrows or unversioned arrows (revision <= 0), otherwise require matching revision
       if (arrow.positionRevision > 0 && positionRevision > 0 && arrow.positionRevision != positionRevision) {
         continue;
       }
@@ -133,86 +138,126 @@ class NibblerArrowPainter extends CustomPainter {
 
     if (validArrows.isEmpty) return;
 
-    // Prepare geometric arrow data
+    // Prepare geometric arrow trajectories with deterministic curved paths
     final prepared = <_PreparedArrow>[];
     for (final arrow in validArrows) {
-      final startCenter = _getSquareCenter(arrow.from, squareSize);
-      final endCenter = _getSquareCenter(arrow.to, squareSize);
+      final startCenter = geo.getSquareCenter(arrow.from);
+      final endCenter = geo.getSquareCenter(arrow.to);
 
       final dx = endCenter.dx - startCenter.dx;
       final dy = endCenter.dy - startCenter.dy;
       final distance = math.sqrt(dx * dx + dy * dy);
       if (distance < 1.0) continue;
 
-      final strokeWidth = squareSize * 0.10 * arrow.style.strokeWidthScale;
-      final arrowHeadLength = squareSize * 0.28 * arrow.style.arrowHeadScale;
-      final badgeRadius = squareSize * 0.25 * arrow.style.badgeScale;
-      final arrowColor = arrow.style.shaftColor.withValues(alpha: arrow.style.opacity);
+      // Refined, thin-to-medium shafts with mobile visibility floor:
+      // Minimum stroke width on mobile is enforced so lower ranks never vanish.
+      final double baseShaftScale = switch (arrow.rank) {
+        1 => 0.082,
+        2 => 0.070,
+        3 => 0.062,
+        _ => 0.055,
+      };
+      final double baseHeadLengthScale = switch (arrow.rank) {
+        1 => 0.26,
+        2 => 0.23,
+        3 => 0.21,
+        _ => 0.19,
+      };
+      final double baseHeadWidthScale = switch (arrow.rank) {
+        1 => 0.28,
+        2 => 0.25,
+        3 => 0.23,
+        _ => 0.21,
+      };
+
+      final strokeWidth = math.max(
+        config.minStrokeWidth,
+        squareSize * baseShaftScale * arrow.style.strokeWidthScale,
+      );
+      final arrowHeadLength = math.max(9.0, squareSize * baseHeadLengthScale * arrow.style.arrowHeadScale);
+      final arrowHeadWidth = math.max(10.0, squareSize * baseHeadWidthScale * arrow.style.arrowHeadScale);
+      final badgeRadius = math.max(10.0, squareSize * 0.175 * arrow.style.badgeScale);
+
+      // Ensure minimum opacity floor so ranks 2..4 remain crisp on mobile
+      final effectiveOpacity = math.max(0.85, arrow.style.opacity);
+      final arrowColor = arrow.style.shaftColor.withValues(alpha: effectiveOpacity);
 
       final unitX = dx / distance;
       final unitY = dy / distance;
 
-      final arrowEndPoint = Offset(
-        endCenter.dx - (unitX * (badgeRadius * 0.35)),
-        endCenter.dy - (unitY * (badgeRadius * 0.35)),
+      // Deterministic signed curvature for elegant trajectory and overlap prevention:
+      // PV1: almost straight with very subtle natural bow (0.02)
+      // PV2: gentle counter curve (-0.09)
+      // PV3: gentle clockwise curve (0.11)
+      // PV4: outer separation curve (-0.14)
+      double effectiveCurvature = arrow.style.curvature;
+      if (effectiveCurvature == 0.0) {
+        effectiveCurvature = switch (arrow.rank) {
+          1 => 0.025,
+          2 => -0.090,
+          3 => 0.110,
+          4 => -0.140,
+          _ => (arrow.rank.isEven ? -0.16 : 0.16),
+        };
+      }
+      effectiveCurvature *= config.curveAmount;
+
+      // Start slightly inset from start square center for clean piece clearance
+      final startOffset = Offset(
+        startCenter.dx + unitX * (squareSize * 0.14),
+        startCenter.dy + unitY * (squareSize * 0.14),
       );
 
-      final curvature = arrow.style.curvature;
-      Path? curvePath;
-      double angle;
+      final arrowEndPoint = endCenter;
+      final normX = -unitY;
+      final normY = unitX;
+      final offsetDist = effectiveCurvature * squareSize;
 
-      if (curvature == 0.0) {
-        angle = math.atan2(dy, dx);
-      } else {
-        final midX = (startCenter.dx + arrowEndPoint.dx) / 2.0;
-        final midY = (startCenter.dy + arrowEndPoint.dy) / 2.0;
-        final normX = -unitY;
-        final normY = unitX;
-        final offsetDist = curvature * squareSize;
+      // Quadratic Bézier control point at midpoint + perpendicular normal
+      final midX = (startOffset.dx + arrowEndPoint.dx) / 2.0;
+      final midY = (startOffset.dy + arrowEndPoint.dy) / 2.0;
+      final controlPoint = Offset(
+        midX + normX * offsetDist,
+        midY + normY * offsetDist,
+      );
 
-        final controlPoint = Offset(
-          midX + normX * offsetDist,
-          midY + normY * offsetDist,
-        );
+      final curvePath = Path()
+        ..moveTo(startOffset.dx, startOffset.dy)
+        ..quadraticBezierTo(controlPoint.dx, controlPoint.dy, arrowEndPoint.dx, arrowEndPoint.dy);
 
-        curvePath = Path()
-          ..moveTo(startCenter.dx, startCenter.dy)
-          ..quadraticBezierTo(controlPoint.dx, controlPoint.dy, arrowEndPoint.dx, arrowEndPoint.dy);
-
-        final endTangentX = arrowEndPoint.dx - controlPoint.dx;
-        final endTangentY = arrowEndPoint.dy - controlPoint.dy;
-        angle = math.atan2(endTangentY, endTangentX);
-      }
+      // Tangent angle at arrival point (arrowEndPoint)
+      final endTangentX = arrowEndPoint.dx - controlPoint.dx;
+      final endTangentY = arrowEndPoint.dy - controlPoint.dy;
+      final angle = math.atan2(endTangentY, endTangentX);
 
       prepared.add(_PreparedArrow(
         arrow: arrow,
-        startCenter: startCenter,
+        startCenter: startOffset,
         endCenter: endCenter,
         arrowEndPoint: arrowEndPoint,
         angle: angle,
         distance: distance,
         strokeWidth: strokeWidth,
         arrowHeadLength: arrowHeadLength,
+        arrowHeadWidth: arrowHeadWidth,
         badgeRadius: badgeRadius,
         arrowColor: arrowColor,
-        curvature: curvature,
+        curvature: effectiveCurvature,
         curvePath: curvePath,
       ));
     }
 
     if (prepared.isEmpty) return;
 
-    // Layout badges with measured TextPainter Rect collision avoidance
-    // Process Rank 1 first so it retains its optimal anchor on the destination square
-    final rankAscending = List<_PreparedArrow>.from(prepared)
-      ..sort((a, b) => a.arrow.rank.compareTo(b.arrow.rank));
+    // Layout badges using dedicated collision-aware NibblerBadgeLayoutEngine.
+    // Badges are placed along the curved shaft backwards from the arrowhead so the arrowhead remains 100% visible,
+    // and offset if needed to guarantee zero badge-on-badge overlaps, board edge containment, and piece avoidance.
+    final badgeRequests = <BadgeLayoutRequest>[];
+    final textPainters = <CandidateArrow, TextPainter>{};
 
-    final placedBadges = <_BadgePlacement>[];
-    final boardBounds = Rect.fromLTWH(4, 4, size.width - 8, size.height - 8);
-
-    for (final p in rankAscending) {
+    for (final p in prepared) {
       final text = p.arrow.getBadgeText(arrowheadType, engineType);
-      final fontSize = text.length > 2 ? p.badgeRadius * 0.72 : p.badgeRadius * 0.92;
+      final fontSize = text.length > 2 ? p.badgeRadius * 0.76 : p.badgeRadius * 0.95;
 
       final textPainter = TextPainter(
         text: TextSpan(
@@ -228,79 +273,56 @@ class NibblerArrowPainter extends CustomPainter {
         textDirection: TextDirection.ltr,
       )..layout();
 
+      textPainters[p.arrow] = textPainter;
+
       const hPadding = 6.0;
       const vPadding = 3.5;
       final badgeW = math.max(p.badgeRadius * 2.0, textPainter.width + hPadding * 2);
       final badgeH = math.max(p.badgeRadius * 2.0, textPainter.height + vPadding * 2);
 
-      final dx = p.endCenter.dx - p.startCenter.dx;
-      final dy = p.endCenter.dy - p.startCenter.dy;
-      final dist = math.sqrt(dx * dx + dy * dy);
-      final uX = dist > 0 ? dx / dist : 0.0;
-      final uY = dist > 0 ? dy / dist : 0.0;
-      final nX = -uY;
-      final nY = uX;
-
-      final preferredCenter = p.endCenter;
-      final step = badgeH * 1.15;
-
-      // Candidate offsets: preferred, along trajectory backwards, perpendicular normals, and forward
-      final candidateCenters = <Offset>[
-        preferredCenter,
-        Offset(preferredCenter.dx - uX * step, preferredCenter.dy - uY * step),
-        Offset(preferredCenter.dx + nX * step, preferredCenter.dy + nY * step),
-        Offset(preferredCenter.dx - nX * step, preferredCenter.dy - nY * step),
-        Offset(preferredCenter.dx - uX * (step * 2.0), preferredCenter.dy - uY * (step * 2.0)),
-        Offset(preferredCenter.dx + uX * (step * 0.6), preferredCenter.dy + uY * (step * 0.6)),
-      ];
-
-      Offset chosenCenter = preferredCenter;
-      Rect? chosenRect;
-      double minOverlapArea = double.infinity;
-
-      for (int i = 0; i < candidateCenters.length; i++) {
-        final c = candidateCenters[i];
-        final clampedX = c.dx.clamp(boardBounds.left + badgeW / 2, boardBounds.right - badgeW / 2);
-        final clampedY = c.dy.clamp(boardBounds.top + badgeH / 2, boardBounds.bottom - badgeH / 2);
-        final candidateCenter = Offset(clampedX, clampedY);
-        final candidateRect = Rect.fromCenter(center: candidateCenter, width: badgeW, height: badgeH);
-
-        double overlapArea = 0.0;
-        for (final placed in placedBadges) {
-          final intersection = candidateRect.intersect(placed.boundingBox);
-          if (intersection.width > 0 && intersection.height > 0) {
-            overlapArea += intersection.width * intersection.height;
-          }
-        }
-
-        // Slight penalty for deviating from destination square so preferred is chosen when free
-        final cost = overlapArea + (i * 25.0);
-        if (cost < minOverlapArea) {
-          minOverlapArea = cost;
-          chosenCenter = candidateCenter;
-          chosenRect = candidateRect;
-          if (overlapArea == 0.0) {
-            break;
-          }
-        }
-      }
-
-      chosenRect ??= Rect.fromCenter(center: chosenCenter, width: badgeW, height: badgeH);
-
-      placedBadges.add(_BadgePlacement(
+      badgeRequests.add(BadgeLayoutRequest(
         arrow: p.arrow,
-        center: chosenCenter,
-        boundingBox: chosenRect,
-        radius: p.badgeRadius,
-        textPainter: textPainter,
+        arrowStart: p.startCenter,
+        arrowEnd: p.arrowEndPoint,
+        arrowMid: Offset(
+          (p.startCenter.dx + p.arrowEndPoint.dx) / 2.0 + (-math.sin(p.angle)) * (p.curvature * squareSize),
+          (p.startCenter.dy + p.arrowEndPoint.dy) / 2.0 + (math.cos(p.angle)) * (p.curvature * squareSize),
+        ),
+        arrowAngle: p.angle,
+        arrowHeadLength: p.arrowHeadLength,
+        arrowHeadWidth: p.arrowHeadWidth,
+        badgeRadius: p.badgeRadius,
         width: badgeW,
         height: badgeH,
+        arrowPath: p.curvePath,
+      ));
+    }
+
+    final solvedBadges = NibblerBadgeLayoutEngine.layoutBadges(
+      requests: badgeRequests,
+      geometry: geo,
+      position: position,
+      boardPadding: 4.0,
+    );
+
+    final placedBadges = <_BadgePlacement>[];
+    for (final s in solvedBadges) {
+      final tp = textPainters[s.arrow]!;
+      placedBadges.add(_BadgePlacement(
+        arrow: s.arrow,
+        center: s.center,
+        boundingBox: s.boundingBox,
+        radius: s.radius,
+        textPainter: tp,
+        width: s.width,
+        height: s.height,
+        leaderStart: s.leaderStart,
+        hasLeader: s.hasLeader,
       ));
     }
 
     // Explicit 3-pass layer rendering:
     // Nibbler layering: Longer arrows underneath shorter arrows.
-    // If lengths are close/tied, higher rank number (worse move) drawn first so Rank 1 draws cleanly on top.
     final drawOrder = List<_PreparedArrow>.from(prepared)
       ..sort((a, b) {
         final lenCmp = b.distance.compareTo(a.distance);
@@ -308,34 +330,14 @@ class NibblerArrowPainter extends CustomPainter {
         return b.arrow.rank.compareTo(a.arrow.rank);
       });
 
-    // LAYER 0: PV Continuation Plan (multi-step maneuver/idea arrows)
-    if (showPvContinuation) {
-      PvContinuationPlan? effectivePlan = continuationPlan;
-      if (effectivePlan == null) {
-        final targetRank = selectedPvIndex ?? 1;
-        for (final a in validArrows) {
-          if (a.rank == targetRank && a.continuationPlan != null && a.continuationPlan!.isNotEmpty) {
-            effectivePlan = a.continuationPlan;
-            break;
-          }
-        }
-        if (effectivePlan == null) {
-          for (final a in validArrows) {
-            if (a.rank == 1 && a.continuationPlan != null && a.continuationPlan!.isNotEmpty) {
-              effectivePlan = a.continuationPlan;
-              break;
-            }
-          }
-        }
-      }
-
-      if (effectivePlan != null && effectivePlan.isNotEmpty) {
-        _paintContinuationPlan(canvas, size, squareSize, effectivePlan);
-      }
-    }
-
-    // LAYER 1: Arrow Shafts
+    // LAYER 1: Arrow Shafts with subtle dark border for contrast
     for (final p in drawOrder) {
+      final borderPaint = Paint()
+        ..color = Colors.black.withValues(alpha: p.arrow.rank == 1 ? 0.35 : 0.22)
+        ..strokeWidth = p.strokeWidth + 1.4
+        ..strokeCap = StrokeCap.round
+        ..style = PaintingStyle.stroke;
+
       final shaftPaint = Paint()
         ..color = p.arrowColor
         ..strokeWidth = p.strokeWidth
@@ -343,15 +345,25 @@ class NibblerArrowPainter extends CustomPainter {
         ..style = PaintingStyle.stroke;
 
       if (p.curvature == 0.0) {
+        canvas.drawLine(p.startCenter, p.arrowEndPoint, borderPaint);
         canvas.drawLine(p.startCenter, p.arrowEndPoint, shaftPaint);
       } else if (p.curvePath != null) {
+        canvas.drawPath(p.curvePath!, borderPaint);
         canvas.drawPath(p.curvePath!, shaftPaint);
       }
     }
 
-    // LAYER 2: Arrowheads
+    // LAYER 2: Arrowheads with prominent Nibbler geometry & dark outline
     for (final p in drawOrder) {
-      _drawArrowHead(canvas, p.arrowEndPoint, p.angle, p.arrowHeadLength, p.arrowColor);
+      _drawArrowHead(
+        canvas: canvas,
+        tip: p.arrowEndPoint,
+        angle: p.angle,
+        length: p.arrowHeadLength,
+        width: p.arrowHeadWidth,
+        color: p.arrowColor,
+        isRank1: p.arrow.rank == 1,
+      );
     }
 
     // LAYER 3: Score Badges (rendered strictly on top of all shafts and arrowheads)
@@ -363,32 +375,43 @@ class NibblerArrowPainter extends CustomPainter {
     }
   }
 
-  void _drawArrowHead(
-    Canvas canvas,
-    Offset point,
-    double angle,
-    double length,
-    Color color,
-  ) {
-    const arrowHeadAngle = math.pi / 6.0;
-    final headP1 = Offset(
-      point.dx - length * math.cos(angle - arrowHeadAngle),
-      point.dy - length * math.sin(angle - arrowHeadAngle),
-    );
-    final headP2 = Offset(
-      point.dx - length * math.cos(angle + arrowHeadAngle),
-      point.dy - length * math.sin(angle + arrowHeadAngle),
-    );
+  void _drawArrowHead({
+    required Canvas canvas,
+    required Offset tip,
+    required double angle,
+    required double length,
+    required double width,
+    required Color color,
+    required bool isRank1,
+  }) {
+    final halfWidth = width / 2.0;
+    final cosA = math.cos(angle);
+    final sinA = math.sin(angle);
+    final normX = -sinA;
+    final normY = cosA;
+
+    final baseCenterX = tip.dx - length * cosA;
+    final baseCenterY = tip.dy - length * sinA;
+
+    final wing1 = Offset(baseCenterX + normX * halfWidth, baseCenterY + normY * halfWidth);
+    final wing2 = Offset(baseCenterX - normX * halfWidth, baseCenterY - normY * halfWidth);
+
+    final notchX = tip.dx - (length * 0.76) * cosA;
+    final notchY = tip.dy - (length * 0.76) * sinA;
 
     final headPath = Path()
-      ..moveTo(point.dx, point.dy)
-      ..lineTo(headP1.dx, headP1.dy)
-      ..lineTo(
-        point.dx - (length * 0.6) * math.cos(angle),
-        point.dy - (length * 0.6) * math.sin(angle),
-      )
-      ..lineTo(headP2.dx, headP2.dy)
+      ..moveTo(tip.dx, tip.dy)
+      ..lineTo(wing1.dx, wing1.dy)
+      ..lineTo(notchX, notchY)
+      ..lineTo(wing2.dx, wing2.dy)
       ..close();
+
+    final outlinePaint = Paint()
+      ..color = Colors.black.withValues(alpha: isRank1 ? 0.38 : 0.25)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = isRank1 ? 1.6 : 1.2
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(headPath, outlinePaint);
 
     final headFillPaint = Paint()
       ..color = color
@@ -406,197 +429,61 @@ class NibblerArrowPainter extends CustomPainter {
       Radius.circular(placement.height / 2.0),
     );
 
-    // 1. Drop shadow
-    final shadowPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.55)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4.0);
-    canvas.drawRRect(rrect.shift(const Offset(0, 1.8)), shadowPaint);
+    // Subtle connector leader line if badge was offset away from the arrow tip
+    if (placement.hasLeader) {
+      // Connect from arrowhead base/tip to the edge of the badge
+      final dir = center - placement.leaderStart;
+      final dist = dir.distance;
+      if (dist > 1.0) {
+        final uDir = dir / dist;
+        // End point slightly before the badge edge
+        final targetPt = Offset(
+          center.dx - uDir.dx * (placement.width / 2.0 * 0.9),
+          center.dy - uDir.dy * (placement.height / 2.0 * 0.9),
+        );
 
-    // 2. Fill badge
+        final leaderOutline = Paint()
+          ..color = Colors.black.withValues(alpha: 0.35)
+          ..strokeWidth = 2.4
+          ..strokeCap = StrokeCap.round
+          ..style = PaintingStyle.stroke;
+        canvas.drawLine(placement.leaderStart, targetPt, leaderOutline);
+
+        final leaderPaint = Paint()
+          ..color = placement.arrow.style.badgeColor.withValues(alpha: 0.85)
+          ..strokeWidth = 1.4
+          ..strokeCap = StrokeCap.round
+          ..style = PaintingStyle.stroke;
+        canvas.drawLine(placement.leaderStart, targetPt, leaderPaint);
+      }
+    }
+
+    // Subtle soft drop shadow
+    final shadowPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.40)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0);
+    canvas.drawRRect(rrect.shift(const Offset(0, 1.2)), shadowPaint);
+
+    // Fill badge
     final fillPaint = Paint()
       ..color = placement.arrow.style.badgeColor
       ..style = PaintingStyle.fill;
     canvas.drawRRect(rrect, fillPaint);
 
-    // 3. High-contrast border (Rank 1 white, other ranks dark subtle)
+    // High-contrast border (Rank 1 crisp white, other ranks crisp dark border)
     final borderPaint = Paint()
       ..color = placement.arrow.style.borderColor
       ..style = PaintingStyle.stroke
-      ..strokeWidth = placement.arrow.rank == 1 ? 2.2 : 1.2;
+      ..strokeWidth = placement.arrow.rank == 1 ? 1.8 : 1.0;
     canvas.drawRRect(rrect, borderPaint);
 
-    // 4. Badge text
+    // Badge text
     placement.textPainter.paint(
       canvas,
       Offset(
         center.dx - (placement.textPainter.width / 2.0),
         center.dy - (placement.textPainter.height / 2.0),
       ),
-    );
-  }
-
-  Offset _getSquareCenter(Square sq, double squareSize) {
-    // White orientation: sq.file 0..7 (a..h, left-to-right), sq.rank 0..7 (1..8, bottom-to-top)
-    // Black orientation: sq.file 7..0 (h..a, left-to-right), sq.rank 7..0 (8..1, bottom-to-top)
-    final f = isFlipped ? (7 - sq.file) : sq.file;
-    final r = isFlipped ? sq.rank : (7 - sq.rank);
-    return Offset((f + 0.5) * squareSize, (r + 0.5) * squareSize);
-  }
-
-  void _paintContinuationPlan(
-    Canvas canvas,
-    Size size,
-    double squareSize,
-    PvContinuationPlan plan,
-  ) {
-    // Only render continuation plies (plyIndex > 0) because plyIndex == 0
-    // is the root candidate move, which is already prominently rendered with its score badge.
-    final continuationArrows = plan.continuationOnly;
-    if (continuationArrows.isEmpty) return;
-
-    // LAYER 0A: Continuation Shafts
-    for (final arrow in continuationArrows) {
-      final startCenter = _getSquareCenter(arrow.from, squareSize);
-      final endCenter = _getSquareCenter(arrow.to, squareSize);
-
-      final dx = endCenter.dx - startCenter.dx;
-      final dy = endCenter.dy - startCenter.dy;
-      final distance = math.sqrt(dx * dx + dy * dy);
-      if (distance < 1.0) continue;
-
-      final strokeWidth = squareSize * 0.08 * arrow.strokeWidthScale;
-      final badgeRadius = squareSize * 0.16 * arrow.badgeScale;
-      final unitX = dx / distance;
-      final unitY = dy / distance;
-
-      final arrowEndPoint = Offset(
-        endCenter.dx - (unitX * (badgeRadius * 0.40)),
-        endCenter.dy - (unitY * (badgeRadius * 0.40)),
-      );
-
-      final shaftPaint = Paint()
-        ..color = arrow.shaftColor.withValues(alpha: arrow.opacity)
-        ..strokeWidth = strokeWidth
-        ..strokeCap = StrokeCap.round
-        ..style = PaintingStyle.stroke;
-
-      if (arrow.isDashed) {
-        _drawDashedLine(canvas, startCenter, arrowEndPoint, shaftPaint);
-      } else {
-        canvas.drawLine(startCenter, arrowEndPoint, shaftPaint);
-      }
-    }
-
-    // LAYER 0B: Continuation Arrowheads
-    for (final arrow in continuationArrows) {
-      final startCenter = _getSquareCenter(arrow.from, squareSize);
-      final endCenter = _getSquareCenter(arrow.to, squareSize);
-      final dx = endCenter.dx - startCenter.dx;
-      final dy = endCenter.dy - startCenter.dy;
-      final distance = math.sqrt(dx * dx + dy * dy);
-      if (distance < 1.0) continue;
-
-      final badgeRadius = squareSize * 0.16 * arrow.badgeScale;
-      final unitX = dx / distance;
-      final unitY = dy / distance;
-      final arrowEndPoint = Offset(
-        endCenter.dx - (unitX * (badgeRadius * 0.40)),
-        endCenter.dy - (unitY * (badgeRadius * 0.40)),
-      );
-
-      final arrowHeadLength = squareSize * 0.22 * arrow.arrowHeadScale;
-      final angle = math.atan2(dy, dx);
-      final arrowColor = arrow.shaftColor.withValues(alpha: arrow.opacity);
-
-      _drawArrowHead(canvas, arrowEndPoint, angle, arrowHeadLength, arrowColor);
-    }
-
-    // LAYER 0C: Continuation Step Sequence Badges (②, ③, ④...)
-    for (final arrow in continuationArrows) {
-      final endCenter = _getSquareCenter(arrow.to, squareSize);
-      final badgeRadius = squareSize * 0.16 * arrow.badgeScale;
-
-      _drawStepBadge(
-        canvas: canvas,
-        center: endCenter,
-        radius: badgeRadius,
-        text: arrow.stepBadgeText,
-        badgeColor: arrow.badgeColor.withValues(alpha: math.min(1.0, arrow.opacity + 0.15)),
-        textColor: arrow.textColor,
-        borderColor: arrow.borderColor,
-      );
-    }
-  }
-
-  void _drawDashedLine(
-    Canvas canvas,
-    Offset p1,
-    Offset p2,
-    Paint paint, {
-    double dashLength = 7.0,
-    double dashSpace = 4.5,
-  }) {
-    final dx = p2.dx - p1.dx;
-    final dy = p2.dy - p1.dy;
-    final distance = math.sqrt(dx * dx + dy * dy);
-    if (distance < 1.0) return;
-
-    final unitX = dx / distance;
-    final unitY = dy / distance;
-    double current = 0.0;
-
-    while (current < distance) {
-      final startX = p1.dx + unitX * current;
-      final startY = p1.dy + unitY * current;
-      final endDist = math.min(current + dashLength, distance);
-      final endX = p1.dx + unitX * endDist;
-      final endY = p1.dy + unitY * endDist;
-      canvas.drawLine(Offset(startX, startY), Offset(endX, endY), paint);
-      current += dashLength + dashSpace;
-    }
-  }
-
-  void _drawStepBadge({
-    required Canvas canvas,
-    required Offset center,
-    required double radius,
-    required String text,
-    required Color badgeColor,
-    required Color textColor,
-    required Color borderColor,
-  }) {
-    final shadowPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.50)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5);
-    canvas.drawCircle(center.translate(0, 1.0), radius, shadowPaint);
-
-    final fillPaint = Paint()
-      ..color = badgeColor
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(center, radius, fillPaint);
-
-    final borderPaint = Paint()
-      ..color = borderColor.withValues(alpha: 0.85)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
-    canvas.drawCircle(center, radius, borderPaint);
-
-    final textPainter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: TextStyle(
-          color: textColor,
-          fontSize: radius * 1.10,
-          fontWeight: FontWeight.w900,
-          fontFamily: 'monospace',
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-
-    textPainter.paint(
-      canvas,
-      Offset(center.dx - (textPainter.width / 2.0), center.dy - (textPainter.height / 2.0)),
     );
   }
 
@@ -608,9 +495,9 @@ class NibblerArrowPainter extends CustomPainter {
     if (oldDelegate.position != position) return true;
     if (oldDelegate.arrowheadType != arrowheadType) return true;
     if (oldDelegate.engineType != engineType) return true;
-    if (oldDelegate.showPvContinuation != showPvContinuation) return true;
-    if (oldDelegate.selectedPvIndex != selectedPvIndex) return true;
-    if (oldDelegate.continuationPlan != continuationPlan) return true;
+    if (oldDelegate.config.curveAmount != config.curveAmount) return true;
+    if (oldDelegate.config.arrowOpacity != config.arrowOpacity) return true;
+    if (oldDelegate.config.minStrokeWidth != config.minStrokeWidth) return true;
     if (oldDelegate.candidateArrows.length != candidateArrows.length) return true;
 
     for (int i = 0; i < candidateArrows.length; i++) {
@@ -622,7 +509,6 @@ class NibblerArrowPainter extends CustomPainter {
       if (a.nodePercentage != b.nodePercentage) return true;
       if (a.policyPercentage != b.policyPercentage) return true;
       if (a.movesLeft != b.movesLeft) return true;
-      if (a.continuationPlan != b.continuationPlan) return true;
     }
     return false;
   }
@@ -637,6 +523,7 @@ class _PreparedArrow {
   final double distance;
   final double strokeWidth;
   final double arrowHeadLength;
+  final double arrowHeadWidth;
   final double badgeRadius;
   final Color arrowColor;
   final double curvature;
@@ -651,6 +538,7 @@ class _PreparedArrow {
     required this.distance,
     required this.strokeWidth,
     required this.arrowHeadLength,
+    required this.arrowHeadWidth,
     required this.badgeRadius,
     required this.arrowColor,
     required this.curvature,
@@ -666,6 +554,8 @@ class _BadgePlacement {
   final TextPainter textPainter;
   final double width;
   final double height;
+  final Offset leaderStart;
+  final bool hasLeader;
 
   _BadgePlacement({
     required this.arrow,
@@ -675,6 +565,7 @@ class _BadgePlacement {
     required this.textPainter,
     required this.width,
     required this.height,
+    required this.leaderStart,
+    required this.hasLeader,
   });
 }
-

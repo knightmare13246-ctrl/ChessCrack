@@ -323,6 +323,7 @@ class _ChessPlayScreenState extends State<ChessPlayScreen> {
       },
       child: Scaffold(
         backgroundColor: const Color(0xFF121212),
+        resizeToAvoidBottomInset: false,
         body: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -342,7 +343,7 @@ class _ChessPlayScreenState extends State<ChessPlayScreen> {
                     child: _buildPlayerBadge(
                       title: _controller.opponentDisplayName,
                       isOpponent: true,
-                      isThinking: _controller.gameState == PlayGameState.engineThinking,
+                      isThinking: _controller.isEngineTurn && _controller.gameState == PlayGameState.engineThinking,
                       clockSide: opponentSide,
                     ),
                   ),
@@ -362,7 +363,7 @@ class _ChessPlayScreenState extends State<ChessPlayScreen> {
                               isFlipped: isFlipped,
                               boardTheme: _themeService.activeBoard,
                               pieceSet: _themeService.activePieceSet,
-                              candidateArrows: _controller.hintArrow != null ? [_controller.hintArrow!] : const [],
+                              candidateArrows: _controller.showHint ? _controller.hintArrows : const [],
                               arrowheadType: ArrowheadType.winrate,
                               engineType: _controller.opponentEngine,
                               onMove: (move) => _controller.playPlayerMove(move),
@@ -379,7 +380,7 @@ class _ChessPlayScreenState extends State<ChessPlayScreen> {
                     child: _buildPlayerBadge(
                       title: 'You',
                       isOpponent: false,
-                      isThinking: _controller.isPlayerTurn,
+                      isThinking: false, // Player NEVER shows engine loading spinner
                       clockSide: playerSide,
                     ),
                   ),
@@ -463,20 +464,23 @@ class _ChessPlayScreenState extends State<ChessPlayScreen> {
     required bool isThinking,
     required ClockSide clockSide,
   }) {
+    // Spinner ONLY shows when opponent engine is actively thinking during opponent turn
+    final showSpinner = isOpponent && isThinking;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: isThinking ? const Color(0xFF242424) : const Color(0xFF1A1A1A),
+        color: showSpinner ? const Color(0xFF242424) : const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isThinking ? const Color(0xFF00D2BE).withAlpha(100) : const Color(0xFF2B2B2B),
+          color: showSpinner ? const Color(0xFF00D2BE).withAlpha(100) : const Color(0xFF2B2B2B),
         ),
       ),
       child: Row(
         children: [
           Icon(
             isOpponent ? Icons.smart_toy_outlined : Icons.person_outline,
-            color: isThinking ? const Color(0xFF00D2BE) : Colors.white70,
+            color: showSpinner ? const Color(0xFF00D2BE) : Colors.white70,
             size: 18,
           ),
           const SizedBox(width: 8),
@@ -495,7 +499,7 @@ class _ChessPlayScreenState extends State<ChessPlayScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (isThinking) ...[
+                if (showSpinner) ...[
                   const SizedBox(width: 8),
                   const SizedBox(
                     width: 10,
@@ -562,7 +566,7 @@ class _ChessPlayScreenState extends State<ChessPlayScreen> {
           ? const Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Game not started',
+                'No moves yet',
                 style: TextStyle(color: Colors.white30, fontSize: 11),
               ),
             )
@@ -599,44 +603,184 @@ class _ChessPlayScreenState extends State<ChessPlayScreen> {
   Widget _buildBottomControls() {
     final canHint = _controller.isPlayerTurn && !_controller.isHintLoading;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: const BoxDecoration(
-        color: Color(0xFF181818),
-        border: Border(top: BorderSide(color: Color(0xFF262626))),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          // Hint Button
-          TextButton.icon(
-            icon: _controller.isHintLoading
-                ? const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00D2BE)),
-                  )
-                : const Icon(Icons.lightbulb_outline, size: 18, color: Color(0xFF00D2BE)),
-            label: const Text('Hint', style: TextStyle(color: Color(0xFF00D2BE))),
-            onPressed: canHint ? _controller.requestHint : null,
-          ),
-
-          // Resign Button
-          TextButton.icon(
-            icon: const Icon(Icons.flag_outlined, size: 18, color: Colors.redAccent),
-            label: const Text('Resign', style: TextStyle(color: Colors.redAccent)),
-            onPressed: _controller.gameState != PlayGameState.gameEnded ? _confirmResign : null,
-          ),
-
-          // Abort Button (Available before move 2)
-          if (_controller.moveHistory.length < 2 && _controller.gameState != PlayGameState.gameEnded)
-            TextButton.icon(
-              icon: const Icon(Icons.cancel_outlined, size: 18, color: Colors.white54),
-              label: const Text('Abort', style: TextStyle(color: Colors.white54)),
-              onPressed: _controller.abortGame,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Candidates Strip when Hint is requested
+        if (_controller.showHint && _controller.isHintLoading)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: const BoxDecoration(
+              color: Color(0xFF16161B),
+              border: Border(top: BorderSide(color: Color(0xFF262630))),
             ),
-        ],
-      ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 1.8, color: Color(0xFF00D2BE)),
+                ),
+                SizedBox(width: 10),
+                Text(
+                  'Calculating engine suggestions…',
+                  style: TextStyle(
+                    color: Color(0xFF00D2BE),
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          )
+        else if (_controller.showHint && _controller.hintArrows.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: const BoxDecoration(
+              color: Color(0xFF14141A),
+              border: Border(
+                top: BorderSide(color: Color(0xFF282835), width: 1),
+                bottom: BorderSide(color: Color(0xFF202028), width: 0.8),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF222230),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.lightbulb, size: 12, color: Color(0xFF00D2BE)),
+                      SizedBox(width: 4),
+                      Text(
+                        'HINTS',
+                        style: TextStyle(
+                          color: Color(0xFF00D2BE),
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: _controller.hintArrows.map((arrow) {
+                        final san = arrow.pvSan.isNotEmpty ? arrow.pvSan.first : arrow.uciMove;
+                        final badgeText = arrow.getBadgeText(ArrowheadType.winrate, _controller.opponentEngine);
+                        final isPv1 = arrow.rank == 1;
+
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                            decoration: BoxDecoration(
+                              color: isPv1 ? const Color(0xFF1F2A28) : const Color(0xFF1B1B22),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: isPv1
+                                    ? const Color(0xFF00D2BE)
+                                    : arrow.style.shaftColor.withValues(alpha: 0.5),
+                                width: isPv1 ? 1.2 : 0.8,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${arrow.rank}. $san',
+                                  style: TextStyle(
+                                    color: isPv1 ? Colors.white : Colors.white70,
+                                    fontSize: 11,
+                                    fontWeight: isPv1 ? FontWeight.bold : FontWeight.w600,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: arrow.style.badgeColor,
+                                    borderRadius: BorderRadius.circular(3),
+                                  ),
+                                  child: Text(
+                                    '$badgeText%',
+                                    style: TextStyle(
+                                      color: arrow.style.textColor,
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w800,
+                                      fontFamily: 'monospace',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: const BoxDecoration(
+            color: Color(0xFF181818),
+            border: Border(top: BorderSide(color: Color(0xFF262626))),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              // Hint Button (Deterministic view over current analysis snapshot)
+              TextButton.icon(
+                icon: _controller.isHintLoading
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00D2BE)),
+                      )
+                    : Icon(
+                        _controller.showHint ? Icons.lightbulb : Icons.lightbulb_outline,
+                        size: 18,
+                        color: const Color(0xFF00D2BE),
+                      ),
+                label: Text(
+                  _controller.showHint ? 'Hide Hint' : 'Hint',
+                  style: const TextStyle(color: Color(0xFF00D2BE), fontWeight: FontWeight.bold),
+                ),
+                onPressed: canHint ? _controller.requestHint : null,
+              ),
+
+              // Resign Button
+              TextButton.icon(
+                icon: const Icon(Icons.flag_outlined, size: 18, color: Colors.redAccent),
+                label: const Text('Resign', style: TextStyle(color: Colors.redAccent)),
+                onPressed: _controller.gameState != PlayGameState.gameEnded ? _confirmResign : null,
+              ),
+
+              // Abort Button (Available before move 2)
+              if (_controller.moveHistory.length < 2 && _controller.gameState != PlayGameState.gameEnded)
+                TextButton.icon(
+                  icon: const Icon(Icons.cancel_outlined, size: 18, color: Colors.white54),
+                  label: const Text('Abort', style: TextStyle(color: Colors.white54)),
+                  onPressed: _controller.abortGame,
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

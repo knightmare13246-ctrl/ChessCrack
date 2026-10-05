@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import '../../models/chess_move.dart';
 import '../../models/chess_position.dart';
 import '../../models/engine_analysis.dart';
+import '../../models/nibbler_arrow_config.dart';
 import '../../services/theme_service.dart';
+import '../../utils/board_geometry.dart';
 import 'nibbler_arrow_painter.dart';
+import 'piece_maneuver_arrow_painter.dart';
 import 'piece_widget.dart';
 
 class NibblerBoard extends StatefulWidget {
@@ -241,7 +244,61 @@ class _NibblerBoardState extends State<NibblerBoard>
                   },
                 ),
 
-                // 5. Multi-PV candidate move arrows with ChessCrack score badges (Isolated RepaintBoundary)
+                // 5. Piece-Maneuver / PV Continuation Plan Arrows (Subordinated Layer)
+                if (widget.showPvContinuation)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: RepaintBoundary(
+                        child: ValueListenableBuilder<PositionAnalysis?>(
+                          valueListenable: widget.analysisListenable ?? ValueNotifier<PositionAnalysis?>(null),
+                          builder: (context, analysis, _) {
+                            PvContinuationPlan? effectivePlan = widget.continuationPlan;
+                            if (effectivePlan == null && analysis != null) {
+                              final isFenMatch = analysis.fen == widget.position.toFen() ||
+                                  analysis.fen.trim().split(' ').take(4).join(' ') ==
+                                      widget.position.toFen().trim().split(' ').take(4).join(' ');
+                              if (isFenMatch) {
+                                final targetRank = widget.selectedPvIndex ?? 1;
+                                for (final a in analysis.candidateArrows) {
+                                  if (a.rank == targetRank &&
+                                      a.continuationPlan != null &&
+                                      a.continuationPlan!.isNotEmpty) {
+                                    effectivePlan = a.continuationPlan;
+                                    break;
+                                  }
+                                }
+                                if (effectivePlan == null) {
+                                  for (final a in analysis.candidateArrows) {
+                                    if (a.rank == 1 &&
+                                        a.continuationPlan != null &&
+                                        a.continuationPlan!.isNotEmpty) {
+                                      effectivePlan = a.continuationPlan;
+                                      break;
+                                    }
+                                  }
+                                }
+                              }
+                            }
+
+                            return CustomPaint(
+                              size: Size(boardSize, boardSize),
+                              painter: PieceManeuverArrowPainter(
+                                continuationPlan: effectivePlan,
+                                isFlipped: widget.isFlipped,
+                                config: const PieceManeuverConfig(
+                                  enabled: true,
+                                  opacity: 0.88,
+                                  showStepNumbers: true,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // 6. Multi-PV candidate move arrows with ChessCrack score badges (Isolated RepaintBoundary)
                 Positioned.fill(
                   child: IgnorePointer(
                     child: RepaintBoundary(
@@ -268,9 +325,6 @@ class _NibblerBoardState extends State<NibblerBoard>
                                     isFlipped: widget.isFlipped,
                                     arrowheadType: widget.arrowheadType,
                                     engineType: widget.engineType,
-                                    continuationPlan: widget.continuationPlan,
-                                    showPvContinuation: widget.showPvContinuation,
-                                    selectedPvIndex: widget.selectedPvIndex,
                                   ),
                                 );
                               },
@@ -286,9 +340,6 @@ class _NibblerBoardState extends State<NibblerBoard>
                                 isFlipped: widget.isFlipped,
                                 arrowheadType: widget.arrowheadType,
                                 engineType: widget.engineType,
-                                continuationPlan: widget.continuationPlan,
-                                showPvContinuation: widget.showPvContinuation,
-                                selectedPvIndex: widget.selectedPvIndex,
                               ),
                             ),
                     ),
@@ -683,9 +734,8 @@ class _NibblerBoardState extends State<NibblerBoard>
   }
 
   Rect _getSquareRect(Square sq, double squareSize) {
-    final f = widget.isFlipped ? (7 - sq.file) : sq.file;
-    final r = widget.isFlipped ? sq.rank : (7 - sq.rank);
-    return Rect.fromLTWH(f * squareSize, r * squareSize, squareSize, squareSize);
+    final geo = BoardGeometry(boardSize: squareSize * 8.0, isFlipped: widget.isFlipped);
+    return geo.getSquareRect(sq);
   }
 }
 

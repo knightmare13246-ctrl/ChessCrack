@@ -263,7 +263,9 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
               ),
             )
           else
-            ...humanItems.take(5).map((item) {
+            ...humanItems.take(4).toList().asMap().entries.map((entry) {
+              final rank = entry.key + 1;
+              final item = entry.value;
               final isHighlighted = widget.highlightedUciMove == item.uci;
               return InkWell(
                 onTap: () {
@@ -272,8 +274,8 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
                   if (move != null) widget.onPlayMove?.call(move);
                 },
                 child: Container(
-                  height: 22,
-                  margin: const EdgeInsets.symmetric(vertical: 1),
+                  height: 21,
+                  margin: const EdgeInsets.symmetric(vertical: 0.5),
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   decoration: BoxDecoration(
                     color: isHighlighted
@@ -292,6 +294,16 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            Text(
+                              '$rank.',
+                              style: TextStyle(
+                                color: rank == 1 ? Colors.white70 : Colors.white38,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 9.5,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                            const SizedBox(width: 3),
                             Container(
                               width: 5,
                               height: 5,
@@ -433,7 +445,8 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
               ),
             )
           else
-            ...lines.take(5).map((line) {
+            ...lines.take(4).map((line) {
+              final rank = line.multipv;
               final firstUci = line.primaryMoveUci ?? (line.movesUci.isNotEmpty ? line.movesUci.first : '');
               final firstSan = line.pvMoves.isNotEmpty
                   ? line.pvMoves.first.figurineSan
@@ -450,8 +463,8 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
                   }
                 },
                 child: Container(
-                  height: 22,
-                  margin: const EdgeInsets.symmetric(vertical: 1),
+                  height: 21,
+                  margin: const EdgeInsets.symmetric(vertical: 0.5),
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   decoration: BoxDecoration(
                     color: isHighlighted
@@ -467,16 +480,33 @@ class _MaiaStockfishComparisonSectionState extends State<MaiaStockfishComparison
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
-                        child: Text(
-                          firstSan.isNotEmpty ? firstSan : firstUci,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 10.5,
-                            fontFamily: 'monospace',
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '$rank.',
+                              style: TextStyle(
+                                color: rank == 1 ? const Color(0xFF90CAF9) : Colors.white38,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 9.5,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                firstSan.isNotEmpty ? firstSan : firstUci,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 10.5,
+                                  fontFamily: 'monospace',
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: 4),

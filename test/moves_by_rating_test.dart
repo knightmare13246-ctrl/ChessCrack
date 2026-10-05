@@ -291,12 +291,12 @@ void main() {
       expect(dataset.supportedRatings.contains(2600), isFalse);
     });
 
-    test('MaiaRatingEngine supportedRatings spans full 600..2600 spectrum (21 ratings)', () {
-      expect(MaiaRatingEngine.supportedRatings.length, equals(21));
+    test('MaiaRatingEngine supportedRatings spans full 600..2600 spectrum (11 ratings)', () {
+      expect(MaiaRatingEngine.supportedRatings.length, equals(11));
       expect(MaiaRatingEngine.supportedRatings.first, equals(600));
       expect(MaiaRatingEngine.supportedRatings.last, equals(2600));
-      for (int i = 0; i < 21; i++) {
-        expect(MaiaRatingEngine.supportedRatings[i], equals(600 + i * 100));
+      for (int i = 0; i < 11; i++) {
+        expect(MaiaRatingEngine.supportedRatings[i], equals(600 + i * 200));
       }
     });
 

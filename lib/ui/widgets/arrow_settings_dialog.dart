@@ -136,7 +136,10 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text('Candidate Moves / Arrows:', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                              const Expanded(
+                                child: Text('Candidate Moves / Arrows:', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                              ),
+                              const SizedBox(width: 8),
                               Text('$_multiPv', style: const TextStyle(color: Color(0xFF00D2BE), fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
                             ],
                           ),
@@ -153,10 +156,6 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
                                     onTap: () {
                                       setState(() {
                                         _multiPv = pv;
-                                        _selectedFilterOthers = ArrowFilterOthers.all;
-                                        if (isLc0 && _selectedFilterLc0 != ArrowFilterLc0.all) {
-                                          _selectedFilterLc0 = ArrowFilterLc0.all;
-                                        }
                                       });
                                       _notifyChange();
                                     },
@@ -196,10 +195,6 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
                             onChanged: (val) {
                               setState(() {
                                 _multiPv = val.round();
-                                _selectedFilterOthers = ArrowFilterOthers.all;
-                                if (isLc0 && _selectedFilterLc0 != ArrowFilterLc0.all) {
-                                  _selectedFilterLc0 = ArrowFilterLc0.all;
-                                }
                               });
                               _notifyChange();
                             },
@@ -251,7 +246,10 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text('Continuation Depth (Plies):', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                                const Expanded(
+                                  child: Text('Continuation Depth (Plies):', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                                ),
+                                const SizedBox(width: 8),
                                 Text('$_pvContinuationDepth plies', style: const TextStyle(color: Color(0xFF00D2BE), fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
                               ],
                             ),
@@ -345,7 +343,7 @@ class _ArrowSettingsDialogState extends State<ArrowSettingsDialog> {
                   const SizedBox(height: 6),
                   ...ArrowheadType.values.map((type) {
                     final isSelected = _selectedArrowhead == type;
-                    final isAvailable = !((type == ArrowheadType.policy) && !isLc0);
+                    final isAvailable = !((type == ArrowheadType.policy || type == ArrowheadType.nodePct) && !isLc0);
 
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 3),

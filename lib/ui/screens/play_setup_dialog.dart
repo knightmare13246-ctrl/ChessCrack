@@ -184,7 +184,7 @@ class _PlaySetupDialogState extends State<PlaySetupDialog> {
                         children: [
                           _buildSideButton('white', 'White', '♔'),
                           const SizedBox(width: 8),
-                          _buildSideButton('random', 'Random', '⯪'),
+                          _buildSideButton('random', 'Random', '◐'),
                           const SizedBox(width: 8),
                           _buildSideButton('black', 'Black', '♚'),
                         ],

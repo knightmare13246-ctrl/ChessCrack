@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'services/chesscrack_core.dart';
 import 'theme/lichess_theme.dart';
 import 'ui/screens/chess_analysis_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    await ChessCrackCore.instance.init();
+  } catch (e) {
+    debugPrint('Failed to initialize ChessCrackCore at startup: $e');
+  }
 
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
