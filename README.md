@@ -8,6 +8,15 @@
 
 ---
 
+## Download
+
+[Download ChessCrack 1.0.0 Universal APK](https://github.com/knightmare13246-ctrl/ChessCrack/releases/download/v1.0.0/ChessCrack-v1.0.0-universal.apk)
+
+SHA-256:
+`6B9E522C4BB531B12FF5B4BC3E61A7DA1088D2176329449094CD78456DD56D05`
+
+---
+
 ## ⚠️ Important Note: Analysis Workbench, Not a Game
 
 ChessCrack is an **analytical utility and chess study workbench**, not a casual chess game:
